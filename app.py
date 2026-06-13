@@ -63,7 +63,7 @@ def calculate_rrg_metrics(tickers, benchmark, interval_str, history_needed):
     df_close = pd.DataFrame()
     
     # Safely isolate the 'Close' prices level mapping
-    if 'Close' in data.columns.levels:
+    if 'Close' in data.columns:
         close_data = data['Close']
         for t in all_tickers:
             if t in close_data.columns:
@@ -85,7 +85,7 @@ def calculate_rrg_metrics(tickers, benchmark, interval_str, history_needed):
         
         # 2. Normalize via moving averages to mimic JdK metrics (14-period standard baseline)
         rs_ratio_ma = rs_ratio_raw.rolling(window=14).mean()
-        rs_ratio_std = rs_raw_std = rs_ratio_raw.rolling(window=14).std()
+        rs_ratio_std = rs_ratio_raw.rolling(window=14).std()
         
         # JdK RS-Ratio index center proxy (scaled around 100 base)
         rs_ratio_index = 100 + ((rs_ratio_raw - rs_ratio_ma) / (rs_ratio_std + 1e-8)) * 5
@@ -135,11 +135,8 @@ if trigger_go:
                 # Dynamic quadrant axis constraints evaluation setup
                 all_x, all_y = [], []
                 
-                # Plotly default color palette mapping to enforce matching line colors
-                colors_palette = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
-                
                 # Process each item vector independently 
-                for idx, (ticker, df) in enumerate(raw_rrg_data.items()):
+                for ticker, df in raw_rrg_data.items():
                     # Slice tail elements requested by user inputs
                     tail_df = df.tail(int(tail_points))
                     if len(tail_df) < 3:
@@ -159,15 +156,12 @@ if trigger_go:
                     head_x = x_raw[-1]
                     head_y = y_raw[-1]
                     
-                    # Pick an indexed color from the fixed palette
-                    assigned_color = colors_palette[idx % len(colors_palette)]
-                    
                     # Line Plot for the smoothed historic tail path 
                     fig.add_trace(go.Scatter(
                         x=x_smooth, y=y_smooth,
                         mode='lines',
                         name=f"{ticker} Path",
-                        line=dict(width=3, color=assigned_color),
+                        line=dict(width=3),
                         hoverinfo='skip'
                     ))
                     
@@ -178,8 +172,7 @@ if trigger_go:
                         name=ticker,
                         text=[f"<b>{ticker}</b>"],
                         textposition="top center",
-                        marker=dict(size=12, symbol='triangle-up', color=assigned_color, line=dict(width=1.5, color='black')),
-                        font=dict(size=12, color='black')
+                        marker=dict(size=12, symbol='triangle-up', line=dict(width=2, color='black'))
                     ))
                 
                 if not all_x or not all_y:
@@ -195,10 +188,10 @@ if trigger_go:
                     y_min, y_max = 100 - max_dev, 100 + max_dev
                     
                     # --- QUADRANT BACKGROUND SHADING CONFIGURATIONS ---
-                    fig.add_vrect(x0=100, x1=x_max, y0=100, y1=y_max, fillcolor="rgba(0, 200, 0, 0.04)", layer="below", line_width=0)  # Leading
-                    fig.add_vrect(x0=100, x1=x_max, y0=y_min, y1=100, fillcolor="rgba(200, 200, 0, 0.04)", layer="below", line_width=0)  # Weakening
-                    fig.add_vrect(x0=x_min, x1=100, y0=y_min, y1=100, fillcolor="rgba(200, 0, 0, 0.04)", layer="below", line_width=0)  # Lagging
-                    fig.add_vrect(x0=x_min, x1=100, y0=100, y1=y_max, fillcolor="rgba(0, 0, 200, 0.04)", layer="below", line_width=0)  # Improving
+                    fig.add_vrect(x0=100, x1=x_max, y0=100, y1=y_max, fillcolor="rgba(0, 200, 0, 0.05)", layer="below", line_width=0)  # Leading
+                    fig.add_vrect(x0=100, x1=x_max, y0=y_min, y1=100, fillcolor="rgba(200, 200, 0, 0.05)", layer="below", line_width=0)  # Weakening
+                    fig.add_vrect(x0=x_min, x1=100, y0=y_min, y1=100, fillcolor="rgba(200, 0, 0, 0.05)", layer="below", line_width=0)  # Lagging
+                    fig.add_vrect(x0=x_min, x1=100, y0=100, y1=y_max, fillcolor="rgba(0, 0, 200, 0.05)", layer="below", line_width=0)  # Improving
                     
                     # Quadrant Static Matrix Text Labels
                     fig.add_annotation(x=100 + (max_dev/2), y=100 + (max_dev/2), text="<b>LEADING</b>", font=dict(color="green", size=16), showarrow=False)
@@ -218,3 +211,4 @@ if trigger_go:
                     
                     st.plotly_chart(fig, use_container_width=True)
 else:
+    st.info("Configure variables inside left side panel and click 'Render RRG Chart' to track structural transformations.")
