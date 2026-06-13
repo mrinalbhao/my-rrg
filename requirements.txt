@@ -1,4 +1,6 @@
 streamlit
-alpha_vantage
-scipy
+pandas
+numpy
 plotly
+scipy
+pandas_datareader
