@@ -29,7 +29,7 @@ benchmark_input = st.sidebar.text_input(
 interval_choice = st.sidebar.selectbox(
     "Data Time Interval",
     options=["1 Day", "1 Week"],
-    index=1  # Default to 1 Week to match your screenshot layout
+    index=1  # Default to 1 Week to match your chart
 )
 
 # Tail points input 
@@ -76,12 +76,12 @@ def calculate_rrg_metrics(tickers, benchmark, interval_str, history_needed):
         # 1. Base Relative Strength
         rs_raw = (df_close[t] / df_close[benchmark]) * 100
         
-        # 2. Compute the True JdK RS-Ratio (14-period standard baseline normalization)
+        # 2. Compute the JdK RS-Ratio normalization
         rs_mean = rs_raw.rolling(window=14).mean()
         rs_std = rs_raw.rolling(window=14).std()
         rs_ratio = 100 + ((rs_raw - rs_mean) / (rs_std + 1e-8))
         
-        # 3. Compute the True JdK RS-Momentum (Rate of change of the RS-Ratio line)
+        # 3. Compute the JdK RS-Momentum
         rs_mom = 100 + ((rs_ratio - rs_ratio.shift(1)) / (rs_ratio.rolling(window=14).std() + 1e-8)) * 10
         
         # Combine metrics into a clean dataframe
@@ -109,7 +109,6 @@ if trigger_go:
         st.error("Please provide both valid asset symbols and a benchmark tracker.")
     else:
         with st.spinner("Analyzing market momentum fields and generating clean vectors..."):
-            # Pull 2 years of history to allow moving averages to calculate correctly
             raw_rrg_data = calculate_rrg_metrics(
                 tickers=parsed_tickers, 
                 benchmark=bench_ticker, 
@@ -124,15 +123,13 @@ if trigger_go:
                 all_x, all_y = [], []
                 
                 # Distinct color palette sequence matching institutional charts
-                color_palette = ["#2ca02c", "#d62728", "#ff7f0e", "#1f77b4", "#9467bd", "#8c564b", "#e377c2"]
+                color_palette = ["#ff7f0e", "#d62728", "#2ca02c", "#1f77b4", "#9467bd", "#8c564b", "#e377c2"]
                 
                 for idx, (ticker, df) in enumerate(raw_rrg_data.items()):
-                    # CRITICAL FIX: Extract the history chunk sequentially so the path traces correctly
                     tail_df = df.tail(int(tail_points))
                     if len(tail_df) < 3:
                         continue
                         
-                    # Maintain historical order from past to present
                     x_raw = tail_df['RS_Ratio'].values
                     y_raw = tail_df['RS_Momentum'].values
                     
@@ -144,7 +141,6 @@ if trigger_go:
                     all_x.extend(x_raw)
                     all_y.extend(y_raw)
                     
-                    # The very last element in the array is the current position (The Head)
                     head_x = x_raw[-1]
                     head_y = y_raw[-1]
                     
@@ -157,7 +153,7 @@ if trigger_go:
                         hoverinfo='skip'
                     ))
                     
-                    # Add historical checkpoint dots along the trail path
+                    # Add simple structural checkpoint dots along the trail history nodes
                     fig.add_trace(go.Scatter(
                         x=x_raw[:-1], y=y_raw[:-1],
                         mode='markers',
@@ -166,7 +162,7 @@ if trigger_go:
                         hoverinfo='skip'
                     ))
                     
-                    # Explicit Head Marker identifying the current live status node
+                    # Explicit Head Marker identifying current status node
                     fig.add_trace(go.Scatter(
                         x=[head_x], y=[head_y],
                         mode='markers+text',
@@ -179,13 +175,11 @@ if trigger_go:
                 if not all_x or not all_y:
                     st.error("Not enough historical data found to construct the RRG tail.")
                 else:
-                    # Compute balanced boundaries around the 100 center crosshair
                     max_dev = max(
                         max(abs(np.array(all_x) - 100)), 
                         max(abs(np.array(all_y) - 100))
                     ) * 1.15
                     
-                    # Keep a minimum zoom scale so the graph looks normal with tight datasets
                     if max_dev < 3:
                         max_dev = 3
                         
@@ -198,7 +192,7 @@ if trigger_go:
                     fig.add_vrect(x0=x_min, x1=100, y0=y_min, y1=100, fillcolor="rgba(200, 0, 0, 0.05)", layer="below", line_width=0)  # Lagging
                     fig.add_vrect(x0=x_min, x1=100, y0=100, y1=y_max, fillcolor="rgba(0, 0, 200, 0.05)", layer="below", line_width=0)  # Improving
                     
-                    # Thin Center Crosshair Lines Fixed at 100
+                    # Thin Crosshair Center Lines
                     fig.add_shape(type="line", x0=100, y0=y_min, x1=100, y1=y_max, line=dict(color="black", width=1, dash="dash"))
                     fig.add_shape(type="line", x0=x_min, y0=100, x1=x_max, y1=100, line=dict(color="black", width=1, dash="dash"))
                     
@@ -218,3 +212,6 @@ if trigger_go:
                         showlegend=False
                     )
                     
+                    st.plotly_chart(fig, use_container_width=True)
+else:
+    st.info("Configure variables inside left side panel and click 'Render RRG Chart' to track structural transformations.")
