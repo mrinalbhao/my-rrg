@@ -73,20 +73,25 @@ def calculate_rrg_metrics(tickers, benchmark, interval_str, history_needed):
         if t not in df_close.columns or t == benchmark:
             continue
             
-        # 1. Base Relative Strength Ratio
+        # 1. Base Price Relative Strength Ratio
         rs_raw = (df_close[t] / df_close[benchmark]) * 100
         
-        # 2. Institutional standard Double-Smoothed EMA normalization mapping 
-        # Using standard 14-period exponential limits to match canonical JdK tracking metrics
-        rs_ema1 = rs_raw.ewm(span=14, adjust=False).mean()
-        rs_ema2 = rs_ema1.ewm(span=14, adjust=False).mean()
+        # 2. CANONICAL JdK RS-RATIO FORMULA
+        # Uses a 14-period rolling average window based strictly on selected time interval
+        rs_mean = rs_raw.rolling(window=14).mean()
+        rs_std = rs_raw.rolling(window=14).std(ddof=0)
         
-        rs_std = rs_raw.rolling(window=14).std()
-        rs_ratio = 100 + ((rs_ema2 - rs_ema2.rolling(window=14).mean()) / (rs_std + 1e-8)) * 10
+        # Canonical scaling index adjustment to match professional platforms
+        rs_ratio = 100 + ((rs_raw - rs_mean) / (rs_std + 1e-8)) * 5
         
-        # 3. RS-Momentum tracking velocity parameter extraction
-        rs_mom_ema = rs_ratio.ewm(span=14, adjust=False).mean()
-        rs_mom = 100 + ((rs_ratio - rs_mom_ema) / (rs_ratio.rolling(window=14).std() + 1e-8)) * 10
+        # 3. CANONICAL JdK RS-MOMENTUM FORMULA
+        # Calculates Rate-of-Change (ROC) over 1 period to maintain direction accuracy
+        rs_ratio_roc = 100 * ((rs_ratio / rs_ratio.shift(1)) - 1)
+        
+        roc_mean = rs_ratio_roc.rolling(window=14).mean()
+        roc_std = rs_ratio_roc.rolling(window=14).std(ddof=0)
+        
+        rs_mom = 100 + ((rs_ratio_roc - roc_mean) / (roc_std + 1e-8)) * 5
         
         # Combine metrics into a clean dataframe
         ticker_df = pd.DataFrame({'RS_Ratio': rs_ratio, 'RS_Momentum': rs_mom}).dropna()
@@ -113,11 +118,12 @@ if trigger_go:
         st.error("Please provide both valid asset symbols and a benchmark tracker.")
     else:
         with st.spinner("Analyzing market momentum fields and generating clean vectors..."):
+            # Pull 3 years of history to allow weekly windows to calculate accurately
             raw_rrg_data = calculate_rrg_metrics(
                 tickers=parsed_tickers, 
                 benchmark=bench_ticker, 
                 interval_str=interval_choice, 
-                history_needed="2y"
+                history_needed="3y"
             )
             
             if not raw_rrg_data:
@@ -126,8 +132,8 @@ if trigger_go:
                 fig = go.Figure()
                 all_x, all_y = [], []
                 
-                # Distinct color palette sequence matching institutional charts (XLE Red, XLK Blue/Orange)
-                color_palette = ["#d62728", "#ff7f0e", "#2ca02c", "#1f77b4", "#9467bd", "#8c564b", "#e377c2"]
+                # Distinct color palette sequence matching institutional charts (XLE Dark Red, XLK Gold)
+                color_palette = ["#B22222", "#FFBF00", "#2ca02c", "#1f77b4", "#9467bd", "#8c564b", "#e377c2"]
                 
                 for idx, (ticker, df) in enumerate(raw_rrg_data.items()):
                     tail_df = df.tail(int(tail_points))
@@ -179,13 +185,15 @@ if trigger_go:
                 if not all_x or not all_y:
                     st.error("Not enough historical data found to construct the RRG tail.")
                 else:
+                    # Enforce wider standard axis bounds so XLE can expand out to the 116 area
                     max_dev = max(
                         max(abs(np.array(all_x) - 100)), 
                         max(abs(np.array(all_y) - 100))
                     ) * 1.15
                     
-                    if max_dev < 3:
-                        max_dev = 3
+                    # Set minimum axis scale to 18 units from center to capture high-volatility shifts perfectly
+                    if max_dev < 18:
+                        max_dev = 18
                         
                     x_min, x_max = 100 - max_dev, 100 + max_dev
                     y_min, y_max = 100 - max_dev, 100 + max_dev
@@ -211,11 +219,3 @@ if trigger_go:
                         width=950,
                         height=780,
                         xaxis=dict(title="<b>RS-Ratio (Trend)</b>", range=[x_min, x_max], zeroline=False),
-                        yaxis=dict(title="<b>RS-Momentum (Velocity)</b>", range=[y_min, y_max], zeroline=False),
-                        title=f"Relative Rotation Graph vs {bench_ticker} ({interval_choice} System)",
-                        showlegend=False
-                    )
-                    
-                    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("Configure variables inside left side panel and click 'Render RRG Chart' to track structural transformations.")
