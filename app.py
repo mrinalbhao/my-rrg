@@ -50,19 +50,25 @@ def calculate_rrg_metrics(tickers, benchmark, interval_str, history_needed):
     interval_map = {"1 Day": "1d", "1 Week": "1wk"}
     yf_interval = interval_map[interval_str]
     
-    # Download clean historical close data
-    all_tickers = tickers + [benchmark]
-    data = yf.download(all_tickers, period=history_needed, interval=yf_interval, group_by='ticker')
+    # Clean list of all symbols
+    all_tickers = list(set(tickers + [benchmark]))
+    
+    # Download using default column grouping to maintain structural consistency
+    data = yf.download(all_tickers, period=history_needed, interval=yf_interval, group_by='column')
     
     if data.empty:
         return None
         
-    # Standardize data structure
+    # Standardize data extraction to handle the MultiIndex securely
     df_close = pd.DataFrame()
-    for t in all_tickers:
-        if t in data.columns.levels:
-            df_close[t] = data[t]['Close']
     
+    # Safely isolate the 'Close' prices level mapping
+    if 'Close' in data.columns.levels[0]:
+        close_data = data['Close']
+        for t in all_tickers:
+            if t in close_data.columns:
+                df_close[t] = close_data[t]
+                
     df_close = df_close.dropna()
     if benchmark not in df_close.columns:
         return None
@@ -113,7 +119,6 @@ if trigger_go:
         st.error("Please provide both valid asset symbols and a benchmark tracker.")
     else:
         with st.spinner("Analyzing market momentum fields and generating clean vectors..."):
-            # Request broader padding windows to cover lookback rollings cleanly
             raw_rrg_data = calculate_rrg_metrics(
                 tickers=parsed_tickers, 
                 benchmark=bench_ticker, 
