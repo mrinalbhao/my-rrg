@@ -173,7 +173,7 @@ if trigger_go:
                         name=ticker,
                         text=[f"<b>{ticker}</b>"],
                         textposition="top center",
-                        marker=dict(size=12, symbol='triangle-up', color=ticker_color, line=dict(width=2, color='black'))
+                        marker=dict(size=12, symbol='circle', color=ticker_color, line=dict(width=2, color='black'))
                     ))
                 
                 if not all_x or not all_y:
