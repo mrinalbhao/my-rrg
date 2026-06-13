@@ -50,26 +50,29 @@ def calculate_rrg_metrics(tickers, benchmark, interval_str, history_needed):
     interval_map = {"1 Day": "1d", "1 Week": "1wk"}
     yf_interval = interval_map[interval_str]
     
-    # Clean list of all symbols
+    # Clean list of all unique symbols
     all_tickers = list(set(tickers + [benchmark]))
     
-    # Download using default column grouping to maintain structural consistency
-    data = yf.download(all_tickers, period=history_needed, interval=yf_interval, group_by='column')
+    # Download close prices directly using a flat structure to prevent MultiIndex data breaks
+    data = yf.download(all_tickers, period=history_needed, interval=yf_interval)
     
     if data.empty:
         return None
         
-    # Standardize data extraction to handle the MultiIndex securely
+    # Isolate data frames cleanly based on multi-asset format modifications
     df_close = pd.DataFrame()
     
-    # Safely isolate the 'Close' prices level mapping
     if 'Close' in data.columns:
-        close_data = data['Close']
-        for t in all_tickers:
-            if t in close_data.columns:
-                df_close[t] = close_data[t]
-                
+        # If simple flat index
+        df_close = data['Close']
+    elif isinstance(data.columns, pd.MultiIndex):
+        # Extract closing data safely across multi-index columns
+        if 'Close' in data.columns.levels[0]:
+            df_close = data['Close']
+            
+    # Clean up empty slots
     df_close = df_close.dropna()
+    
     if benchmark not in df_close.columns:
         return None
 
@@ -93,8 +96,13 @@ def calculate_rrg_metrics(tickers, benchmark, interval_str, history_needed):
         # JdK RS-Momentum rate of change proxy (scaled around 100 base)
         rs_mom_index = 100 + (rs_ratio_index.pct_change(periods=5) * 100)
         
-        # Combine metrics into a clean dataframe (keep index dates)
-        ticker_df = pd.DataFrame({'RS_Ratio': rs_ratio_index, 'RS_Momentum': rs_mom_index}).dropna()
+        # Combine metrics into a clean dataframe alongside date strings
+        ticker_df = pd.DataFrame({
+            'RS_Ratio': rs_ratio_index, 
+            'RS_Momentum': rs_mom_index,
+            'Date': rs_ratio_index.index.strftime('%Y-%m-%d')
+        }).dropna()
+        
         rrg_results[t] = ticker_df
         
     return rrg_results
@@ -144,17 +152,9 @@ if trigger_go:
                         
                     x_raw = tail_df['RS_Ratio'].values
                     y_raw = tail_df['RS_Momentum'].values
+                    dates_raw = tail_df['Date'].values
                     
-                    # Convert dates format cleanly for the custom mouse tooltip text
-                    dates_raw = tail_df.index.strftime('%Y-%m-%d').tolist()
-                    
-                    # Generate tooltips text list
-                    hover_texts = [
-                        f"<b>{ticker}</b><br>Date: {d}<br>RS-Ratio: {x:.2f}<br>RS-Momentum: {y:.2f}"
-                        for d, x, y in zip(dates_raw, x_raw, y_raw)
-                    ]
-                    
-                    # Apply fine mathematical smoothings
+                    # Apply fine mathematical smoothings for the continuous track line
                     x_smooth, y_smooth = smooth_trajectory(x_raw, y_raw, steps=200)
                     
                     # Accumulate boundaries tracking pointers
@@ -165,37 +165,46 @@ if trigger_go:
                     head_x = x_raw[-1]
                     head_y = y_raw[-1]
                     
-                    # 1. Line Plot for the smoothed historic tail path (No hover to avoid interference)
+                    # 1. Line Plot Trace for the smoothed historic tail path (No hover to avoid duplicate text blocks)
                     fig.add_trace(go.Scatter(
                         x=x_smooth, y=y_smooth,
                         mode='lines',
-                        name=f"{ticker} Path",
-                        line=dict(width=3),
+                        name=f"{ticker} Line",
+                        line=dict(width=2.5),
                         hoverinfo='skip',
                         showlegend=False
                     ))
                     
-                    # 2. Scatter layer for the specific spaced historical tracking dots (With Custom Hover)
+                    # 2. Sequential Dot Trace on exact historical interval intervals with interactive popups
                     fig.add_trace(go.Scatter(
                         x=x_raw, y=y_raw,
                         mode='markers',
-                        name=ticker,
-                        marker=dict(size=6, opacity=0.7, line=dict(width=1, color='white')),
-                        text=hover_texts,
-                        hoverinfo='text',
+                        name=f"{ticker} History",
+                        marker=dict(size=6, opacity=0.7),
+                        customdata=dates_raw,
+                        hovertemplate=(
+                            f"<b>{ticker} History Point</b><br>"
+                            "Date: %{customdata}<br>"
+                            "RS-Ratio: %{x:.2f}<br>"
+                            "RS-Momentum: %{y:.2f}<extra></extra>"
+                        ),
                         showlegend=False
                     ))
                     
-                    # 3. Explicit Head Marker identifying current status node
+                    # 3. Explicit Frontier Head Arrow Marker identifying current status node
                     fig.add_trace(go.Scatter(
                         x=[head_x], y=[head_y],
                         mode='markers+text',
                         name=ticker,
                         text=[f"<b>{ticker}</b>"],
                         textposition="top center",
-                        marker=dict(size=12, symbol='triangle-up', line=dict(width=2, color='black')),
-                        hoverinfo='skip',
-                        showlegend=False
+                        marker=dict(size=12, symbol='triangle-up', line=dict(width=1.5, color='black')),
+                        hovertemplate=(
+                            f"<b>CURRENT: {ticker}</b><br>"
+                            "RS-Ratio: %{x:.2f}<br>"
+                            "RS-Momentum: %{y:.2f}<extra></extra>"
+                        ),
+                        showlegend=True
                     ))
                 
                 if not all_x or not all_y:
@@ -211,16 +220,14 @@ if trigger_go:
                     y_min, y_max = 100 - max_dev, 100 + max_dev
                     
                     # --- QUADRANT BACKGROUND SHADING CONFIGURATIONS ---
-                    fig.add_vrect(x0=100, x1=x_max, y0=100, y1=y_max, fillcolor="rgba(0, 200, 0, 0.05)", layer="below", line_width=0)  # Leading
-                    fig.add_vrect(x0=100, x1=x_max, y0=y_min, y1=100, fillcolor="rgba(200, 200, 0, 0.05)", layer="below", line_width=0)  # Weakening
-                    fig.add_vrect(x0=x_min, x1=100, y0=y_min, y1=100, fillcolor="rgba(200, 0, 0, 0.05)", layer="below", line_width=0)  # Lagging
-                    fig.add_vrect(x0=x_min, x1=100, y0=100, y1=y_max, fillcolor="rgba(0, 0, 200, 0.05)", layer="below", line_width=0)  # Improving
+                    fig.add_vrect(x0=100, x1=x_max, y0=100, y1=y_max, fillcolor="rgba(0, 200, 0, 0.04)", layer="below", line_width=0)  # Leading
+                    fig.add_vrect(x0=100, x1=x_max, y0=y_min, y1=100, fillcolor="rgba(200, 200, 0, 0.04)", layer="below", line_width=0)  # Weakening
+                    fig.add_vrect(x0=x_min, x1=100, y0=y_min, y1=100, fillcolor="rgba(200, 0, 0, 0.04)", layer="below", line_width=0)  # Lagging
+                    fig.add_vrect(x0=x_min, x1=100, y0=100, y1=y_max, fillcolor="rgba(0, 0, 200, 0.04)", layer="below", line_width=0)  # Improving
                     
                     # Thin Crosshair Center Lines
-                    fig.add_shape(type="line", x0=100, y0=y_min, x1=100, y1=y_max, line=dict(color="black", width=1, dash="dash"))
-                    fig.add_shape(type="line", x0=x_min, y0=100, x1=x_max, y1=100, line=dict(color="black", width=1, dash="dash"))
+                    fig.add_shape(type="line", x0=100, y0=y_min, x1=100, y1=y_max, line=dict(color="rgba(0,0,0,0.4)", width=1, dash="dash"))
+                    fig.add_shape(type="line", x0=x_min, y0=100, x1=x_max, y1=100, line=dict(color="rgba(0,0,0,0.4)", width=1, dash="dash"))
                     
                     # Quadrant Static Matrix Text Labels
                     fig.add_annotation(x=100 + (max_dev/2), y=100 + (max_dev/2), text="<b>LEADING</b>", font=dict(color="green", size=16), showarrow=False)
-                    fig.add_annotation(x=100 + (max_dev/2), y=100 - (max_dev/2), text="<b>WEAKENING</b>", font=dict(color="gold", size=16), showarrow=False)
-                    fig.add_annotation(x=100 - (max_dev/2), y=100 - (max_dev/2), text="<b>LAGGING</b>", font=dict(color="red", size=16), showarrow=False)
