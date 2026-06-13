@@ -16,7 +16,7 @@ st.sidebar.header("Configuration Settings")
 # Text input for Custom Tickers
 ticker_input = st.sidebar.text_input(
     "Asset Tickers (Comma separated)", 
-    value="XLE, XLK"
+    value="AAPL, MSFT, GOOGL, AMZN, NVDA"
 )
 
 # Text input for Benchmark
@@ -29,7 +29,7 @@ benchmark_input = st.sidebar.text_input(
 interval_choice = st.sidebar.selectbox(
     "Data Time Interval",
     options=["1 Day", "1 Week"],
-    index=1  # Default to 1 Week to match your chart
+    index=0
 )
 
 # Tail points input 
@@ -37,7 +37,7 @@ tail_points = st.sidebar.number_input(
     "Number of Tail Points (History)", 
     min_value=3, 
     max_value=100, 
-    value=10, 
+    value=14, 
     step=1
 )
 
@@ -50,25 +50,24 @@ def calculate_rrg_metrics(tickers, benchmark, interval_str, history_needed):
     interval_map = {"1 Day": "1d", "1 Week": "1wk"}
     yf_interval = interval_map[interval_str]
     
+    # Clean list of all symbols
     all_tickers = list(set(tickers + [benchmark]))
     
-    # Download raw data using explicit multi_level_index setting to avoid MultiIndex parsing bugs
-    data = yf.download(all_tickers, period=history_needed, interval=yf_interval)
+    # Download using default column grouping to maintain structural consistency
+    data = yf.download(all_tickers, period=history_needed, interval=yf_interval, group_by='column')
     
     if data.empty:
         return None
         
-    # Flatten multi-level headers safely if they exist
-    if isinstance(data.columns, pd.MultiIndex):
-        # Flatten by grabbing the level value associated with the ticker tracking elements
-        close_cols = [col for col in data.columns if col[0] == 'Close']
-        df_close = pd.DataFrame(index=data.index)
-        for col in close_cols:
-            ticker_symbol = col[1]
-            df_close[ticker_symbol] = data[col]
-    else:
-        # Fallback if a single ticker structure returns flat columns
-        df_close = data[['Close']].copy() if 'Close' in data.columns else pd.DataFrame()
+    # Standardize data extraction to handle the MultiIndex securely
+    df_close = pd.DataFrame()
+    
+    # Safely isolate the 'Close' prices level mapping
+    if 'Close' in data.columns:
+        close_data = data['Close']
+        for t in all_tickers:
+            if t in close_data.columns:
+                df_close[t] = close_data[t]
                 
     df_close = df_close.dropna()
     if benchmark not in df_close.columns:
@@ -76,25 +75,26 @@ def calculate_rrg_metrics(tickers, benchmark, interval_str, history_needed):
 
     rrg_results = {}
     
+    # Calculate canonical RS-Ratio and RS-Momentum properties
     for t in tickers:
         if t not in df_close.columns or t == benchmark:
             continue
             
-        # 1. Base Relative Strength Ratio
-        rs_raw = (df_close[t] / df_close[benchmark]) * 100
+        # 1. Base Relative Strength Ratio vs the Benchmark
+        rs_ratio_raw = df_close[t] / df_close[benchmark]
         
-        # 2. Institutional standard JdK RS-Ratio (Moving Average Normalization)
-        rs_mean = rs_raw.rolling(window=14).mean()
-        rs_std = rs_raw.rolling(window=14).std()
-        rs_ratio = 100 + ((rs_raw - rs_mean) / (rs_std + 1e-8)) * 5
+        # 2. Normalize via moving averages to mimic JdK metrics (14-period standard baseline)
+        rs_ratio_ma = rs_ratio_raw.rolling(window=14).mean()
+        rs_ratio_std = rs_ratio_raw.rolling(window=14).std()
         
-        # 3. Institutional standard JdK RS-Momentum (Rate of Change Normalization)
-        rs_mom_mean = rs_ratio.rolling(window=14).mean()
-        rs_mom_std = rs_ratio.rolling(window=14).std()
-        rs_mom = 100 + ((rs_ratio - rs_mom_mean) / (rs_mom_std + 1e-8)) * 5
+        # JdK RS-Ratio index center proxy (scaled around 100 base)
+        rs_ratio_index = 100 + ((rs_ratio_raw - rs_ratio_ma) / (rs_ratio_std + 1e-8)) * 5
+        
+        # JdK RS-Momentum rate of change proxy (scaled around 100 base)
+        rs_mom_index = 100 + (rs_ratio_index.pct_change(periods=5) * 100)
         
         # Combine metrics into a clean dataframe
-        ticker_df = pd.DataFrame({'RS_Ratio': rs_ratio, 'RS_Momentum': rs_mom}).dropna()
+        ticker_df = pd.DataFrame({'RS_Ratio': rs_ratio_index, 'RS_Momentum': rs_mom_index}).dropna()
         rrg_results[t] = ticker_df
         
     return rrg_results
@@ -109,8 +109,9 @@ def smooth_trajectory(x_coords, y_coords, steps=100):
     
     return cs_x(t_smooth), cs_y(t_smooth)
 
-# --- APPLICATION LOGIC ---
+# --- APPLICATION LOGIC EXECUTIVE BRANCH ---
 if trigger_go:
+    # Clean string inputs into isolated programmatic tokens
     parsed_tickers = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
     bench_ticker = benchmark_input.strip().upper()
     
@@ -118,24 +119,28 @@ if trigger_go:
         st.error("Please provide both valid asset symbols and a benchmark tracker.")
     else:
         with st.spinner("Analyzing market momentum fields and generating clean vectors..."):
-            # Pull 3 years of history to provide deep lookup windows for moving averages
             raw_rrg_data = calculate_rrg_metrics(
                 tickers=parsed_tickers, 
                 benchmark=bench_ticker, 
                 interval_str=interval_choice, 
-                history_needed="3y"
+                history_needed="2y"
             )
             
             if not raw_rrg_data:
                 st.error("Data tracking failed. Please ensure stock tickers exist on Yahoo Finance.")
             else:
+                # Initialize custom interactive canvas configuration
                 fig = go.Figure()
+                
+                # Dynamic quadrant axis constraints evaluation setup
                 all_x, all_y = [], []
                 
-                # Distinct color palette sequence matching institutional charts (XLE Red, XLK Blue/Orange)
-                color_palette = ["#d62728", "#ff7f0e", "#2ca02c", "#1f77b4", "#9467bd", "#8c564b", "#e377c2"]
+                # Distinct color palette sequence to ensure different tickers look clear and separate
+                color_palette = ["#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00", "#FFFF33", "#A65628", "#F781BF", "#999999"]
                 
+                # Process each item vector independently 
                 for idx, (ticker, df) in enumerate(raw_rrg_data.items()):
+                    # Slice tail elements requested by user inputs
                     tail_df = df.tail(int(tail_points))
                     if len(tail_df) < 3:
                         continue
@@ -143,18 +148,21 @@ if trigger_go:
                     x_raw = tail_df['RS_Ratio'].values
                     y_raw = tail_df['RS_Momentum'].values
                     
+                    # Select a dedicated color for this specific ticker
                     ticker_color = color_palette[idx % len(color_palette)]
                     
-                    # Smooth out the lines seamlessly
+                    # Apply fine mathematical smoothings
                     x_smooth, y_smooth = smooth_trajectory(x_raw, y_raw, steps=200)
                     
+                    # Accumulate boundaries tracking pointers
                     all_x.extend(x_raw)
                     all_y.extend(y_raw)
                     
+                    # Extract the leading frontier point metadata coordinates
                     head_x = x_raw[-1]
                     head_y = y_raw[-1]
                     
-                    # Line Plot for the smoothed historic tail path 
+                    # Line Plot for the smoothed historic tail path
                     fig.add_trace(go.Scatter(
                         x=x_smooth, y=y_smooth,
                         mode='lines',
@@ -163,7 +171,7 @@ if trigger_go:
                         hoverinfo='skip'
                     ))
                     
-                    # Add simple structural checkpoint dots along the trail history nodes
+                    # Add distinct interval marker dots along the trail history nodes
                     fig.add_trace(go.Scatter(
                         x=x_raw[:-1], y=y_raw[:-1],
                         mode='markers',
@@ -185,14 +193,12 @@ if trigger_go:
                 if not all_x or not all_y:
                     st.error("Not enough historical data found to construct the RRG tail.")
                 else:
+                    # Compute balanced boundary conditions limits for symmetry 
                     max_dev = max(
                         max(abs(np.array(all_x) - 100)), 
                         max(abs(np.array(all_y) - 100))
                     ) * 1.15
                     
-                    if max_dev < 3:
-                        max_dev = 3
-                        
                     x_min, x_max = 100 - max_dev, 100 + max_dev
                     y_min, y_max = 100 - max_dev, 100 + max_dev
                     
@@ -206,7 +212,7 @@ if trigger_go:
                     fig.add_shape(type="line", x0=100, y0=y_min, x1=100, y1=y_max, line=dict(color="black", width=1, dash="dash"))
                     fig.add_shape(type="line", x0=x_min, y0=100, x1=x_max, y1=100, line=dict(color="black", width=1, dash="dash"))
                     
-                    # Quadrant Labels
+                    # Quadrant Static Matrix Text Labels
                     fig.add_annotation(x=100 + (max_dev/2), y=100 + (max_dev/2), text="<b>LEADING</b>", font=dict(color="green", size=16), showarrow=False)
                     fig.add_annotation(x=100 + (max_dev/2), y=100 - (max_dev/2), text="<b>WEAKENING</b>", font=dict(color="gold", size=16), showarrow=False)
                     fig.add_annotation(x=100 - (max_dev/2), y=100 - (max_dev/2), text="<b>LAGGING</b>", font=dict(color="red", size=16), showarrow=False)
@@ -214,7 +220,3 @@ if trigger_go:
                     
                     # Final layout configurations
                     fig.update_layout(
-                        width=950,
-                        height=780,
-                        xaxis=dict(title="<b>RS-Ratio (Trend)</b>", range=[x_min, x_max], zeroline=False),
-                        yaxis=dict(title="<b>RS-Momentum (Velocity)</b>", range=[y_min, y_max], zeroline=False),
