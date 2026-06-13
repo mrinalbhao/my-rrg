@@ -1,4 +1,4 @@
 streamlit
-yfinance
+alpha_vantage
 scipy
 plotly
