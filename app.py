@@ -60,7 +60,7 @@ def calculate_rrg_metrics(tickers, benchmark, interval_str, history_needed):
     # Standardize data structure
     df_close = pd.DataFrame()
     for t in all_tickers:
-        if t in data.columns.levels[0]:
+        if t in data.columns.levels:
             df_close[t] = data[t]['Close']
     
     df_close = df_close.dropna()
@@ -128,7 +128,7 @@ if trigger_go:
                 fig = go.Figure()
                 
                 # Dynamic quadrant axis constraints evaluation setup
-                all_x, all_y = [100], [100]
+                all_x, all_y = [], []
                 
                 # Process each item vector independently 
                 for ticker, df in raw_rrg_data.items():
@@ -160,50 +160,51 @@ if trigger_go:
                         hoverinfo='skip'
                     ))
                     
-                 # Explicit Head Marker identifying current status node
-fig.add_trace(go.Scatter(
-    x=[head_x], y=[head_y],
-    mode='markers+text',
-    name=ticker,
-    text=[f"<b>{ticker}</b>"],
-    textposition="top center",
-    marker=dict(size=12, symbol='triangle-up', line=dict(width=2, color='black')),
-    font=dict(size=12)
-))
-
+                    # Explicit Head Marker identifying current status node
+                    fig.add_trace(go.Scatter(
+                        x=[head_x], y=[head_y],
+                        mode='markers+text',
+                        name=ticker,
+                        text=[f"<b>{ticker}</b>"],
+                        textposition="top center",
+                        marker=dict(size=12, symbol='triangle-up', line=dict(width=2, color='black')),
+                        font=dict(size=12)
+                    ))
                 
-                # Compute balanced boundary conditions limits for symmetry 
-                max_dev = max(
-                    max(abs(np.array(all_x) - 100)), 
-                    max(abs(np.array(all_y) - 100))
-                ) * 1.15
-                
-                x_min, x_max = 100 - max_dev, 100 + max_dev
-                y_min, y_max = 100 - max_dev, 100 + max_dev
-                
-                # --- QUADRANT BACKGROUND SHADING CONFIGURATIONS ---
-                fig.add_vrect(x0=100, x1=x_max, y0=100, y1=y_max, fillcolor="rgba(0, 200, 0, 0.05)", layer="below", line_width=0)  # Leading
-                fig.add_vrect(x0=100, x1=x_max, y0=y_min, y1=100, fillcolor="rgba(200, 200, 0, 0.05)", layer="below", line_width=0)  # Weakening
-                fig.add_vrect(x0=x_min, x1=100, y0=y_min, y1=100, fillcolor="rgba(200, 0, 0, 0.05)", layer="below", line_width=0)  # Lagging
-                fig.add_vrect(x0=x_min, x1=100, y0=100, y1=y_max, fillcolor="rgba(0, 0, 200, 0.05)", layer="below", line_width=0)  # Improving
-                
-                # Quadrant Static Matrix Text Labels
-                fig.add_annotation(x=100 + (max_dev/2), y=100 + (max_dev/2), text="<b>LEADING</b>", font=dict(color="green", size=16), showarrow=False)
-                fig.add_annotation(x=100 + (max_dev/2), y=100 - (max_dev/2), text="<b>WEAKENING</b>", font=dict(color="gold", size=16), showarrow=False)
-                fig.add_annotation(x=100 - (max_dev/2), y=100 - (max_dev/2), text="<b>LAGGING</b>", font=dict(color="red", size=16), showarrow=False)
-                fig.add_annotation(x=100 - (max_dev/2), y=100 + (max_dev/2), text="<b>IMPROVING</b>", font=dict(color="blue", size=16), showarrow=False)
-                
-                # Final layout configurations
-                fig.update_layout(
-                    width=900,
-                    height=750,
-                    xaxis=dict(title="<b>RS-Ratio (Trend)</b>", range=[x_min, x_max], zeroline=True, zerolinecolor='black', zerolinewidth=2),
-                    yaxis=dict(title="<b>RS-Momentum (Velocity)</b>", range=[y_min, y_max], zeroline=True, zerolinecolor='black', zerolinewidth=2),
-                    title=f"Relative Rotation Graph vs {bench_ticker} ({interval_choice} System)",
-                    showlegend=False
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
+                if not all_x or not all_y:
+                    st.error("Not enough historical data found to construct the RRG tail.")
+                else:
+                    # Compute balanced boundary conditions limits for symmetry 
+                    max_dev = max(
+                        max(abs(np.array(all_x) - 100)), 
+                        max(abs(np.array(all_y) - 100))
+                    ) * 1.15
+                    
+                    x_min, x_max = 100 - max_dev, 100 + max_dev
+                    y_min, y_max = 100 - max_dev, 100 + max_dev
+                    
+                    # --- QUADRANT BACKGROUND SHADING CONFIGURATIONS ---
+                    fig.add_vrect(x0=100, x1=x_max, y0=100, y1=y_max, fillcolor="rgba(0, 200, 0, 0.05)", layer="below", line_width=0)  # Leading
+                    fig.add_vrect(x0=100, x1=x_max, y0=y_min, y1=100, fillcolor="rgba(200, 200, 0, 0.05)", layer="below", line_width=0)  # Weakening
+                    fig.add_vrect(x0=x_min, x1=100, y0=y_min, y1=100, fillcolor="rgba(200, 0, 0, 0.05)", layer="below", line_width=0)  # Lagging
+                    fig.add_vrect(x0=x_min, x1=100, y0=100, y1=y_max, fillcolor="rgba(0, 0, 200, 0.05)", layer="below", line_width=0)  # Improving
+                    
+                    # Quadrant Static Matrix Text Labels
+                    fig.add_annotation(x=100 + (max_dev/2), y=100 + (max_dev/2), text="<b>LEADING</b>", font=dict(color="green", size=16), showarrow=False)
+                    fig.add_annotation(x=100 + (max_dev/2), y=100 - (max_dev/2), text="<b>WEAKENING</b>", font=dict(color="gold", size=16), showarrow=False)
+                    fig.add_annotation(x=100 - (max_dev/2), y=100 - (max_dev/2), text="<b>LAGGING</b>", font=dict(color="red", size=16), showarrow=False)
+                    fig.add_annotation(x=100 - (max_dev/2), y=100 + (max_dev/2), text="<b>IMPROVING</b>", font=dict(color="blue", size=16), showarrow=False)
+                    
+                    # Final layout configurations
+                    fig.update_layout(
+                        width=900,
+                        height=750,
+                        xaxis=dict(title="<b>RS-Ratio (Trend)</b>", range=[x_min, x_max], zeroline=True, zerolinecolor='black', zerolinewidth=2),
+                        yaxis=dict(title="<b>RS-Momentum (Velocity)</b>", range=[y_min, y_max], zeroline=True, zerolinecolor='black', zerolinewidth=2),
+                        title=f"Relative Rotation Graph vs {bench_ticker} ({interval_choice} System)",
+                        showlegend=False
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
 else:
     st.info("Configure variables inside left side panel and click 'Render RRG Chart' to track structural transformations.")
-
