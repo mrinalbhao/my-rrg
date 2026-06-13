@@ -47,20 +47,28 @@ trigger_go = st.sidebar.button("🚀 Render RRG Chart")
 # --- CALCULATION HELPER FUNCTIONS ---
 def calculate_rrg_metrics(tickers, benchmark, interval_str, history_needed):
     """Fetches stock data and extracts standard RS-Ratio and RS-Momentum lines."""
+    interval_map = {"1 Day": "1d", "1 Week": "1wk"}
+    yf_interval = interval_map[interval_str]
+    
     all_tickers = list(set(tickers + [benchmark]))
     
-    # CRITICAL MATH FIX: Always download raw Daily data to populate moving averages cleanly
-    data = yf.download(all_tickers, period=history_needed, interval="1d", group_by='column')
+    # Download raw data using explicit multi_level_index setting to avoid MultiIndex parsing bugs
+    data = yf.download(all_tickers, period=history_needed, interval=yf_interval)
     
     if data.empty:
         return None
         
-    df_close = pd.DataFrame()
-    if 'Close' in data.columns:
-        close_data = data['Close']
-        for t in all_tickers:
-            if t in close_data.columns:
-                df_close[t] = close_data[t]
+    # Flatten multi-level headers safely if they exist
+    if isinstance(data.columns, pd.MultiIndex):
+        # Flatten by grabbing the level value associated with the ticker tracking elements
+        close_cols = [col for col in data.columns if col[0] == 'Close']
+        df_close = pd.DataFrame(index=data.index)
+        for col in close_cols:
+            ticker_symbol = col[1]
+            df_close[ticker_symbol] = data[col]
+    else:
+        # Fallback if a single ticker structure returns flat columns
+        df_close = data[['Close']].copy() if 'Close' in data.columns else pd.DataFrame()
                 
     df_close = df_close.dropna()
     if benchmark not in df_close.columns:
@@ -76,25 +84,17 @@ def calculate_rrg_metrics(tickers, benchmark, interval_str, history_needed):
         rs_raw = (df_close[t] / df_close[benchmark]) * 100
         
         # 2. Institutional standard JdK RS-Ratio (Moving Average Normalization)
-        # Using a 14-period daily baseline lookup window
         rs_mean = rs_raw.rolling(window=14).mean()
         rs_std = rs_raw.rolling(window=14).std()
         rs_ratio = 100 + ((rs_raw - rs_mean) / (rs_std + 1e-8)) * 5
         
         # 3. Institutional standard JdK RS-Momentum (Rate of Change Normalization)
-        # Using a 14-period lookback standard tracking window
         rs_mom_mean = rs_ratio.rolling(window=14).mean()
         rs_mom_std = rs_ratio.rolling(window=14).std()
         rs_mom = 100 + ((rs_ratio - rs_mom_mean) / (rs_mom_std + 1e-8)) * 5
         
-        # Combine metrics into a clean daily dataframe
-        ticker_df = pd.DataFrame({'RS_Ratio': rs_ratio, 'RS_Momentum': rs_mom})
-        
-        # CRITICAL RE-SAMPLING FIX: Downsample daily indicators to weekly intervals if requested
-        if interval_str == "1 Week":
-            ticker_df = ticker_df.resample('W').last()
-            
-        ticker_df = ticker_df.dropna()
+        # Combine metrics into a clean dataframe
+        ticker_df = pd.DataFrame({'RS_Ratio': rs_ratio, 'RS_Momentum': rs_mom}).dropna()
         rrg_results[t] = ticker_df
         
     return rrg_results
@@ -218,7 +218,3 @@ if trigger_go:
                         height=780,
                         xaxis=dict(title="<b>RS-Ratio (Trend)</b>", range=[x_min, x_max], zeroline=False),
                         yaxis=dict(title="<b>RS-Momentum (Velocity)</b>", range=[y_min, y_max], zeroline=False),
-                        title=f"Relative Rotation Graph vs {bench_ticker} ({interval_choice} System)",
-                        showlegend=False
-                    )
-                    
