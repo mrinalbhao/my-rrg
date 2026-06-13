@@ -16,7 +16,7 @@ st.sidebar.header("Configuration Settings")
 # Text input for Custom Tickers
 ticker_input = st.sidebar.text_input(
     "Asset Tickers (Comma separated)", 
-    value="XLE, XLK, IGV, SMH, EUAD"
+    value="XLE, XLK"
 )
 
 # Text input for Benchmark
@@ -51,17 +51,12 @@ def calculate_rrg_metrics(tickers, benchmark, interval_str, history_needed):
     yf_interval = interval_map[interval_str]
     
     all_tickers = list(set(tickers + [benchmark]))
-    
-    # Download using default column grouping to maintain structural consistency
     data = yf.download(all_tickers, period=history_needed, interval=yf_interval, group_by='column')
     
     if data.empty:
         return None
         
-    # Standardize data extraction to handle the MultiIndex securely
     df_close = pd.DataFrame()
-    
-    # Safely isolate the 'Close' prices level mapping
     if 'Close' in data.columns:
         close_data = data['Close']
         for t in all_tickers:
@@ -78,16 +73,20 @@ def calculate_rrg_metrics(tickers, benchmark, interval_str, history_needed):
         if t not in df_close.columns or t == benchmark:
             continue
             
-        # 1. Base Relative Strength
+        # 1. Base Relative Strength Ratio
         rs_raw = (df_close[t] / df_close[benchmark]) * 100
         
-        # 2. Restore the original JdK RS-Ratio normalization formula that worked
-        rs_mean = rs_raw.rolling(window=14).mean()
-        rs_std = rs_raw.rolling(window=14).std()
-        rs_ratio = 100 + ((rs_raw - rs_mean) / (rs_std + 1e-8)) * 5
+        # 2. Institutional standard Double-Smoothed EMA normalization mapping 
+        # Using standard 14-period exponential limits to match canonical JdK tracking metrics
+        rs_ema1 = rs_raw.ewm(span=14, adjust=False).mean()
+        rs_ema2 = rs_ema1.ewm(span=14, adjust=False).mean()
         
-        # 3. Restore the original clean RS-Momentum formula that worked
-        rs_mom = 100 + (rs_ratio.pct_change(periods=5) * 100)
+        rs_std = rs_raw.rolling(window=14).std()
+        rs_ratio = 100 + ((rs_ema2 - rs_ema2.rolling(window=14).mean()) / (rs_std + 1e-8)) * 10
+        
+        # 3. RS-Momentum tracking velocity parameter extraction
+        rs_mom_ema = rs_ratio.ewm(span=14, adjust=False).mean()
+        rs_mom = 100 + ((rs_ratio - rs_mom_ema) / (rs_ratio.rolling(window=14).std() + 1e-8)) * 10
         
         # Combine metrics into a clean dataframe
         ticker_df = pd.DataFrame({'RS_Ratio': rs_ratio, 'RS_Momentum': rs_mom}).dropna()
@@ -127,8 +126,8 @@ if trigger_go:
                 fig = go.Figure()
                 all_x, all_y = [], []
                 
-                # Distinct color palette sequence matching institutional charts
-                color_palette = ["#ff7f0e", "#d62728", "#2ca02c", "#1f77b4", "#9467bd", "#8c564b", "#e377c2"]
+                # Distinct color palette sequence matching institutional charts (XLE Red, XLK Blue/Orange)
+                color_palette = ["#d62728", "#ff7f0e", "#2ca02c", "#1f77b4", "#9467bd", "#8c564b", "#e377c2"]
                 
                 for idx, (ticker, df) in enumerate(raw_rrg_data.items()):
                     tail_df = df.tail(int(tail_points))
@@ -167,14 +166,14 @@ if trigger_go:
                         hoverinfo='skip'
                     ))
                     
-                    # Explicit Head Marker using a uniform circle identifier
+                    # Explicit Head Marker identifying current status node
                     fig.add_trace(go.Scatter(
                         x=[head_x], y=[head_y],
                         mode='markers+text',
                         name=ticker,
                         text=[f"<b>{ticker}</b>"],
                         textposition="top center",
-                        marker=dict(size=12, symbol='circle', color=ticker_color, line=dict(width=2, color='black'))
+                        marker=dict(size=12, symbol='triangle-up', color=ticker_color, line=dict(width=2, color='black'))
                     ))
                 
                 if not all_x or not all_y:
