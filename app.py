@@ -16,7 +16,7 @@ st.sidebar.header("Configuration Settings")
 # Text input for Custom Tickers
 ticker_input = st.sidebar.text_input(
     "Asset Tickers (Comma separated)", 
-    value="XLE, XLK"
+    value="XLE, XLK, IGV, SMH, EUAD"
 )
 
 # Text input for Benchmark
@@ -81,13 +81,13 @@ def calculate_rrg_metrics(tickers, benchmark, interval_str, history_needed):
         # 1. Base Relative Strength
         rs_raw = (df_close[t] / df_close[benchmark]) * 100
         
-        # 2. Compute the JdK RS-Ratio normalization
+        # 2. Restore the original JdK RS-Ratio normalization formula that worked
         rs_mean = rs_raw.rolling(window=14).mean()
         rs_std = rs_raw.rolling(window=14).std()
         rs_ratio = 100 + ((rs_raw - rs_mean) / (rs_std + 1e-8)) * 5
         
-        # 3. Compute the JdK RS-Momentum
-        rs_mom = 100 + ((rs_ratio - rs_ratio.shift(1)) / (rs_ratio.rolling(window=14).std() + 1e-8)) * 10
+        # 3. Restore the original clean RS-Momentum formula that worked
+        rs_mom = 100 + (rs_ratio.pct_change(periods=5) * 100)
         
         # Combine metrics into a clean dataframe
         ticker_df = pd.DataFrame({'RS_Ratio': rs_ratio, 'RS_Momentum': rs_mom}).dropna()
