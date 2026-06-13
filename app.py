@@ -160,16 +160,17 @@ if trigger_go:
                         hoverinfo='skip'
                     ))
                     
-                    # Explicit Head Marker identifying current status node
-                    fig.add_trace(go.Scatter(
-                        x=[head_x], y=[head_y],
-                        mode='markers+text',
-                        name=ticker,
-                        text=[ticker],
-                        textposition="top center",
-                        marker=dict(size=12, symbol='triangle-up', line=dict(width=2, color='black')),
-                        font=dict(weight='bold')
-                    ))
+                 # Explicit Head Marker identifying current status node
+fig.add_trace(go.Scatter(
+    x=[head_x], y=[head_y],
+    mode='markers+text',
+    name=ticker,
+    text=[f"<b>{ticker}</b>"],
+    textposition="top center",
+    marker=dict(size=12, symbol='triangle-up', line=dict(width=2, color='black')),
+    font=dict(size=12)
+))
+
                 
                 # Compute balanced boundary conditions limits for symmetry 
                 max_dev = max(
