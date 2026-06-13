@@ -93,7 +93,7 @@ def calculate_rrg_metrics(tickers, benchmark, interval_str, history_needed):
         # JdK RS-Momentum rate of change proxy (scaled around 100 base)
         rs_mom_index = 100 + (rs_ratio_index.pct_change(periods=5) * 100)
         
-        # Combine metrics into a clean dataframe
+        # Combine metrics into a clean dataframe (keep index dates)
         ticker_df = pd.DataFrame({'RS_Ratio': rs_ratio_index, 'RS_Momentum': rs_mom_index}).dropna()
         rrg_results[t] = ticker_df
         
@@ -145,6 +145,15 @@ if trigger_go:
                     x_raw = tail_df['RS_Ratio'].values
                     y_raw = tail_df['RS_Momentum'].values
                     
+                    # Convert dates format cleanly for the custom mouse tooltip text
+                    dates_raw = tail_df.index.strftime('%Y-%m-%d').tolist()
+                    
+                    # Generate tooltips text list
+                    hover_texts = [
+                        f"<b>{ticker}</b><br>Date: {d}<br>RS-Ratio: {x:.2f}<br>RS-Momentum: {y:.2f}"
+                        for d, x, y in zip(dates_raw, x_raw, y_raw)
+                    ]
+                    
                     # Apply fine mathematical smoothings
                     x_smooth, y_smooth = smooth_trajectory(x_raw, y_raw, steps=200)
                     
@@ -156,23 +165,37 @@ if trigger_go:
                     head_x = x_raw[-1]
                     head_y = y_raw[-1]
                     
-                    # Line Plot for the smoothed historic tail path 
+                    # 1. Line Plot for the smoothed historic tail path (No hover to avoid interference)
                     fig.add_trace(go.Scatter(
                         x=x_smooth, y=y_smooth,
                         mode='lines',
                         name=f"{ticker} Path",
                         line=dict(width=3),
-                        hoverinfo='skip'
+                        hoverinfo='skip',
+                        showlegend=False
                     ))
                     
-                    # Explicit Head Marker identifying current status node
+                    # 2. Scatter layer for the specific spaced historical tracking dots (With Custom Hover)
+                    fig.add_trace(go.Scatter(
+                        x=x_raw, y=y_raw,
+                        mode='markers',
+                        name=ticker,
+                        marker=dict(size=6, opacity=0.7, line=dict(width=1, color='white')),
+                        text=hover_texts,
+                        hoverinfo='text',
+                        showlegend=False
+                    ))
+                    
+                    # 3. Explicit Head Marker identifying current status node
                     fig.add_trace(go.Scatter(
                         x=[head_x], y=[head_y],
                         mode='markers+text',
                         name=ticker,
                         text=[f"<b>{ticker}</b>"],
                         textposition="top center",
-                        marker=dict(size=12, symbol='triangle-up', line=dict(width=2, color='black'))
+                        marker=dict(size=12, symbol='triangle-up', line=dict(width=2, color='black')),
+                        hoverinfo='skip',
+                        showlegend=False
                     ))
                 
                 if not all_x or not all_y:
@@ -193,7 +216,7 @@ if trigger_go:
                     fig.add_vrect(x0=x_min, x1=100, y0=y_min, y1=100, fillcolor="rgba(200, 0, 0, 0.05)", layer="below", line_width=0)  # Lagging
                     fig.add_vrect(x0=x_min, x1=100, y0=100, y1=y_max, fillcolor="rgba(0, 0, 200, 0.05)", layer="below", line_width=0)  # Improving
                     
-                    # Thin Crosshair Center Lines (Vertical Line added at x=100)
+                    # Thin Crosshair Center Lines
                     fig.add_shape(type="line", x0=100, y0=y_min, x1=100, y1=y_max, line=dict(color="black", width=1, dash="dash"))
                     fig.add_shape(type="line", x0=x_min, y0=100, x1=x_max, y1=100, line=dict(color="black", width=1, dash="dash"))
                     
@@ -201,18 +224,3 @@ if trigger_go:
                     fig.add_annotation(x=100 + (max_dev/2), y=100 + (max_dev/2), text="<b>LEADING</b>", font=dict(color="green", size=16), showarrow=False)
                     fig.add_annotation(x=100 + (max_dev/2), y=100 - (max_dev/2), text="<b>WEAKENING</b>", font=dict(color="gold", size=16), showarrow=False)
                     fig.add_annotation(x=100 - (max_dev/2), y=100 - (max_dev/2), text="<b>LAGGING</b>", font=dict(color="red", size=16), showarrow=False)
-                    fig.add_annotation(x=100 - (max_dev/2), y=100 + (max_dev/2), text="<b>IMPROVING</b>", font=dict(color="blue", size=16), showarrow=False)
-                    
-                    # Final layout configurations
-                    fig.update_layout(
-                        width=900,
-                        height=750,
-                        xaxis=dict(title="<b>RS-Ratio (Trend)</b>", range=[x_min, x_max], zeroline=False),
-                        yaxis=dict(title="<b>RS-Momentum (Velocity)</b>", range=[y_min, y_max], zeroline=False),
-                        title=f"Relative Rotation Graph vs {bench_ticker} ({interval_choice} System)",
-                        showlegend=False
-                    )
-                    
-                    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("Configure variables inside left side panel and click 'Render RRG Chart' to track structural transformations.")
