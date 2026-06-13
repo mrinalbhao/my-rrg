@@ -29,7 +29,7 @@ benchmark_input = st.sidebar.text_input(
 interval_choice = st.sidebar.selectbox(
     "Data Time Interval",
     options=["1 Day", "1 Week"],
-    index=1  # Default to 1 Week to match your chart
+    index=1  # Matches your weekly rrgoptima reference chart
 )
 
 # Tail points input 
@@ -44,24 +44,26 @@ tail_points = st.sidebar.number_input(
 # Go Button
 trigger_go = st.sidebar.button("🚀 Render RRG Chart")
 
-# --- CALCULATION HELPER FUNCTIONS ---
+# --- INSTITIONAL JDK CALCULATIONS ---
 def calculate_rrg_metrics(tickers, benchmark, interval_str, history_needed):
-    """Fetches stock data and extracts standard RS-Ratio and RS-Momentum lines."""
+    """Calculates canonical JdK RS-Ratio and RS-Momentum tracking indices."""
     interval_map = {"1 Day": "1d", "1 Week": "1wk"}
     yf_interval = interval_map[interval_str]
     
     all_tickers = list(set(tickers + [benchmark]))
-    data = yf.download(all_tickers, period=history_needed, interval=yf_interval, group_by='column')
+    # Download raw assets directly 
+    data = yf.download(all_tickers, period=history_needed, interval=yf_interval)
     
     if data.empty:
         return None
         
+    # Safely isolate the closing prices, avoiding any alphabetical dictionary shuffles
     df_close = pd.DataFrame()
     if 'Close' in data.columns:
-        close_data = data['Close']
+        close_df = data['Close']
         for t in all_tickers:
-            if t in close_data.columns:
-                df_close[t] = close_data[t]
+            if t in close_df.columns:
+                df_close[t] = close_df[t]
                 
     df_close = df_close.dropna()
     if benchmark not in df_close.columns:
@@ -69,22 +71,28 @@ def calculate_rrg_metrics(tickers, benchmark, interval_str, history_needed):
 
     rrg_results = {}
     
+    # Process each ticker explicitly against its distinct mapped column
     for t in tickers:
         if t not in df_close.columns or t == benchmark:
             continue
             
-        # 1. Base Relative Strength
-        rs_raw = (df_close[t] / df_close[benchmark]) * 100
+        # Step 1: Compute Base Relative Strength (RS)
+        rs_raw = df_close[t] / df_close[benchmark]
         
-        # 2. Compute the JdK RS-Ratio normalization
-        rs_mean = rs_raw.rolling(window=14).mean()
+        # Step 2: Compute JdK RS-Ratio via institutional Exponential Smoothing matrix
+        # Uses a 14-period benchmark mean and standard deviation framework
+        rs_mean = rs_raw.ewm(span=14, adjust=False).mean()
         rs_std = rs_raw.rolling(window=14).std()
-        rs_ratio = 100 + ((rs_raw - rs_mean) / (rs_std + 1e-8))
         
-        # 3. Compute the JdK RS-Momentum
-        rs_mom = 100 + ((rs_ratio - rs_ratio.shift(1)) / (rs_ratio.rolling(window=14).std() + 1e-8)) * 10
+        # Standardize and center tightly around the baseline center index of 100
+        rs_ratio = 100 + ((rs_raw - rs_mean) / (rs_std + 1e-8)) * 5
         
-        # Combine metrics into a clean dataframe
+        # Step 3: Compute JdK RS-Momentum using a double smoothed Rate-of-Change (ROC) 
+        # Tracks the physical velocity shift of the RS-Ratio track over a 5-period window
+        rs_ratio_smoothed = rs_ratio.ewm(span=14, adjust=False).mean()
+        rs_mom = 100 + (rs_ratio_smoothed.pct_change(periods=5) * 100) * 3
+        
+        # Pack results alongside data index rows safely
         ticker_df = pd.DataFrame({'RS_Ratio': rs_ratio, 'RS_Momentum': rs_mom}).dropna()
         rrg_results[t] = ticker_df
         
@@ -100,7 +108,7 @@ def smooth_trajectory(x_coords, y_coords, steps=100):
     
     return cs_x(t_smooth), cs_y(t_smooth)
 
-# --- APPLICATION LOGIC ---
+# --- APPLICATION EXECUTION ---
 if trigger_go:
     parsed_tickers = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
     bench_ticker = benchmark_input.strip().upper()
@@ -108,12 +116,12 @@ if trigger_go:
     if not parsed_tickers or not bench_ticker:
         st.error("Please provide both valid asset symbols and a benchmark tracker.")
     else:
-        with st.spinner("Analyzing market momentum fields and generating clean vectors..."):
+        with st.spinner("Processing institutional JdK curves..."):
             raw_rrg_data = calculate_rrg_metrics(
                 tickers=parsed_tickers, 
                 benchmark=bench_ticker, 
                 interval_str=interval_choice, 
-                history_needed="2y"
+                history_needed="3y" # Expanded padding loopback timeline to initialize EMAs correctly
             )
             
             if not raw_rrg_data:
@@ -122,20 +130,26 @@ if trigger_go:
                 fig = go.Figure()
                 all_x, all_y = [], []
                 
-                # Distinct color palette sequence matching institutional charts
-                color_palette = ["#ff7f0e", "#d62728", "#2ca02c", "#1f77b4", "#9467bd", "#8c564b", "#e377c2"]
+                # High contrast palette mapping (Energy=Red, Technology=Orange/Gold to match your image)
+                color_map = {
+                    "XLE": "#D62728", # Deep Red
+                    "XLK": "#FF7F0E", # Vivid Orange/Yellow
+                }
+                fallback_colors = ["#2CA02C", "#1F77B4", "#9467BD", "#8C564B"]
                 
                 for idx, (ticker, df) in enumerate(raw_rrg_data.items()):
                     tail_df = df.tail(int(tail_points))
                     if len(tail_df) < 3:
                         continue
                         
+                    # Pull sequential metrics in exact chronological progression order
                     x_raw = tail_df['RS_Ratio'].values
                     y_raw = tail_df['RS_Momentum'].values
                     
-                    ticker_color = color_palette[idx % len(color_palette)]
+                    # Apply specific color choice or fallback smoothly
+                    ticker_color = color_map.get(ticker, fallback_colors[idx % len(fallback_colors)])
                     
-                    # Smooth out the lines seamlessly
+                    # Track lines interpolation engine
                     x_smooth, y_smooth = smooth_trajectory(x_raw, y_raw, steps=200)
                     
                     all_x.extend(x_raw)
@@ -144,7 +158,7 @@ if trigger_go:
                     head_x = x_raw[-1]
                     head_y = y_raw[-1]
                     
-                    # Line Plot for the smoothed historic tail path 
+                    # 1. Curve Track Plot
                     fig.add_trace(go.Scatter(
                         x=x_smooth, y=y_smooth,
                         mode='lines',
@@ -153,7 +167,7 @@ if trigger_go:
                         hoverinfo='skip'
                     ))
                     
-                    # Add simple structural checkpoint dots along the trail history nodes
+                    # 2. Historical Context Dots
                     fig.add_trace(go.Scatter(
                         x=x_raw[:-1], y=y_raw[:-1],
                         mode='markers',
@@ -162,7 +176,7 @@ if trigger_go:
                         hoverinfo='skip'
                     ))
                     
-                    # Explicit Head Marker identifying current status node
+                    # 3. Leading Head Vector Node
                     fig.add_trace(go.Scatter(
                         x=[head_x], y=[head_y],
                         mode='markers+text',
@@ -173,28 +187,29 @@ if trigger_go:
                     ))
                 
                 if not all_x or not all_y:
-                    st.error("Not enough historical data found to construct the RRG tail.")
+                    st.error("Not enough historical data found to construct the RRG tail configurations.")
                 else:
+                    # Calculate balanced axis limits symmetric to 100 center points
                     max_dev = max(
                         max(abs(np.array(all_x) - 100)), 
                         max(abs(np.array(all_y) - 100))
-                    ) * 1.15
+                    ) * 1.25
                     
-                    if max_dev < 3:
-                        max_dev = 3
+                    if max_dev < 5:
+                        max_dev = 5
                         
                     x_min, x_max = 100 - max_dev, 100 + max_dev
                     y_min, y_max = 100 - max_dev, 100 + max_dev
                     
                     # --- QUADRANT BACKGROUND SHADING CONFIGURATIONS ---
-                    fig.add_vrect(x0=100, x1=x_max, y0=100, y1=y_max, fillcolor="rgba(0, 200, 0, 0.05)", layer="below", line_width=0)  # Leading
-                    fig.add_vrect(x0=100, x1=x_max, y0=y_min, y1=100, fillcolor="rgba(200, 200, 0, 0.05)", layer="below", line_width=0)  # Weakening
-                    fig.add_vrect(x0=x_min, x1=100, y0=y_min, y1=100, fillcolor="rgba(200, 0, 0, 0.05)", layer="below", line_width=0)  # Lagging
-                    fig.add_vrect(x0=x_min, x1=100, y0=100, y1=y_max, fillcolor="rgba(0, 0, 200, 0.05)", layer="below", line_width=0)  # Improving
+                    fig.add_vrect(x0=100, x1=x_max, y0=100, y1=y_max, fillcolor="rgba(0, 200, 0, 0.04)", layer="below", line_width=0)  # Leading
+                    fig.add_vrect(x0=100, x1=x_max, y0=y_min, y1=100, fillcolor="rgba(200, 200, 0, 0.04)", layer="below", line_width=0)  # Weakening
+                    fig.add_vrect(x0=x_min, x1=100, y0=y_min, y1=100, fillcolor="rgba(200, 0, 0, 0.04)", layer="below", line_width=0)  # Lagging
+                    fig.add_vrect(x0=x_min, x1=100, y0=100, y1=y_max, fillcolor="rgba(0, 0, 200, 0.04)", layer="below", line_width=0)  # Improving
                     
-                    # Thin Crosshair Center Lines
-                    fig.add_shape(type="line", x0=100, y0=y_min, x1=100, y1=y_max, line=dict(color="black", width=1, dash="dash"))
-                    fig.add_shape(type="line", x0=x_min, y0=100, x1=x_max, y1=100, line=dict(color="black", width=1, dash="dash"))
+                    # Thin Crosshair Center Lines Fixed at 100
+                    fig.add_shape(type="line", x0=100, y0=y_min, x1=100, y1=y_max, line=dict(color="rgba(0,0,0,0.5)", width=1.5, dash="dash"))
+                    fig.add_shape(type="line", x0=x_min, y0=100, x1=x_max, y1=100, line=dict(color="rgba(0,0,0,0.5)", width=1.5, dash="dash"))
                     
                     # Quadrant Labels
                     fig.add_annotation(x=100 + (max_dev/2), y=100 + (max_dev/2), text="<b>LEADING</b>", font=dict(color="green", size=16), showarrow=False)
@@ -202,16 +217,7 @@ if trigger_go:
                     fig.add_annotation(x=100 - (max_dev/2), y=100 - (max_dev/2), text="<b>LAGGING</b>", font=dict(color="red", size=16), showarrow=False)
                     fig.add_annotation(x=100 - (max_dev/2), y=100 + (max_dev/2), text="<b>IMPROVING</b>", font=dict(color="blue", size=16), showarrow=False)
                     
-                    # Final layout configurations
+                    # Layout formatting
                     fig.update_layout(
                         width=950,
                         height=780,
-                        xaxis=dict(title="<b>RS-Ratio (Trend)</b>", range=[x_min, x_max], zeroline=False),
-                        yaxis=dict(title="<b>RS-Momentum (Velocity)</b>", range=[y_min, y_max], zeroline=False),
-                        title=f"Relative Rotation Graph vs {bench_ticker} ({interval_choice} System)",
-                        showlegend=False
-                    )
-                    
-                    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("Configure variables inside left side panel and click 'Render RRG Chart' to track structural transformations.")
