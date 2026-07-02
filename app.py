@@ -179,8 +179,19 @@ if trigger_go:
                         name=ticker,
                         text=[f"<b>{ticker}</b>"],
                         textposition="top center",
-                        marker=dict(size=12, symbol='circle', color=ticker_color, line=dict(width=2, color='black'))
+                        marker=dict(size=12, symbol='circle', color=ticker_color, line=dict(width=2, color='black')),
+                        # Pass the final date element matching the head node coordinates
+                        hovertext=[dates_raw[-1]],
+                        # Define identical hover tracking configurations as the history trail
+                        hovertemplate=(
+                            f"<b>{ticker}</b><br>" +
+                            "Date: %{hovertext}<br>" +
+                            "RS-Ratio: %{x:.2f}<br>" +
+                            "RS-Momentum: %{y:.2f}<br>" +
+                            "<extra></extra>"
+                        )
                     ))
+
                 
                 if not all_x or not all_y:
                     st.error("Not enough historical data found to construct the RRG tail.")
