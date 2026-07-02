@@ -169,7 +169,18 @@ if trigger_go:
                         mode='markers',
                         name=f"{ticker} History",
                         marker=dict(size=6, color=ticker_color, symbol='circle'),
-                        hoverinfo='skip'
+                        # hoverinfo='skip'
+
+                        # Map the formatted dates array to the historical node slice
+                        hovertext=dates_raw[:-1],
+                        # Define a custom hover tracking text template displaying metrics and dates
+                        hovertemplate=(
+                            f"<b>{ticker}</b><br>" +
+                            "Date: %{hovertext}<br>" +
+                            "RS-Ratio: %{x:.2f}<br>" +
+                            "RS-Momentum: %{y:.2f}<br>" +
+                            "<extra></extra>" # Hides the default secondary trace box
+                        )
                     ))
                     
                     # Explicit Head Marker identifying current status node
