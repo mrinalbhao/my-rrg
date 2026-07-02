@@ -45,41 +45,53 @@ tail_points = st.sidebar.number_input(
 # Go Button
 trigger_go = st.sidebar.button("🚀 Render RRG Chart")
 
+# --- CALCULATION HELPER FUNCTIONS ---
 def calculate_rrg_metrics(tickers, benchmark, interval_str, history_needed):
     """Fetches stock data and extracts standard RS-Ratio and RS-Momentum lines."""
-    # Force daily downloads if 1 Week is requested to manually resample data points
-    yf_interval = "1d" if interval_str == "1 Week" else {"1 Day": "1d"}[interval_str]
+    interval_map = {"1 Day": "1d", "1 Week": "1wk"}
+    yf_interval = interval_map[interval_str]
     
     all_tickers = list(set(tickers + [benchmark]))
     data = yf.download(all_tickers, period=history_needed, interval=yf_interval, group_by='column')
     
-    if data.empty: return None
+    if data.empty:
+        return None
         
-    df_close = data['Close'] if 'Close' in data.columns else pd.DataFrame()
+    df_close = pd.DataFrame()
+    if 'Close' in data.columns:
+        close_data = data['Close']
+        for t in all_tickers:
+            if t in close_data.columns:
+                df_close[t] = close_data[t]
+                
     df_close = df_close.dropna()
-    if benchmark not in df_close.columns: return None
-
-    # --- ADVANCED TIME-RESAMPLING FOR ACCURATE TAIL-END NODES ---
-    if interval_str == "1 Week":
-        # Aggregate daily to weekly and adjust index to end on Friday
-        df_close = df_close.resample('W').last().dropna()
-        df_close.index = df_close.index - pd.to_timedelta(df_close.index.dayofweek - 4, unit='D')
-        df_close = df_close.dropna()
+    if benchmark not in df_close.columns:
+        return None
 
     rrg_results = {}
+    
     for t in tickers:
-        if t not in df_close.columns or t == benchmark: continue
+        if t not in df_close.columns or t == benchmark:
+            continue
             
+        # 1. Base Relative Strength Ratio
         rs_raw = (df_close[t] / df_close[benchmark]) * 100
+        
+        # 2. Institutional standard Double-Smoothed EMA normalization mapping 
+        # Using standard 14-period exponential limits to match canonical JdK tracking metrics
         rs_ema1 = rs_raw.ewm(span=14, adjust=False).mean()
         rs_ema2 = rs_ema1.ewm(span=14, adjust=False).mean()
+        
         rs_std = rs_raw.rolling(window=14).std()
         rs_ratio = 100 + ((rs_ema2 - rs_ema2.rolling(window=14).mean()) / (rs_std + 1e-8)) * 10
         
+        # 3. RS-Momentum tracking velocity parameter extraction
         rs_mom_ema = rs_ratio.ewm(span=14, adjust=False).mean()
         rs_mom = 100 + ((rs_ratio - rs_mom_ema) / (rs_ratio.rolling(window=14).std() + 1e-8)) * 10
         
-        rrg_results[t] = pd.DataFrame({'RS_Ratio': rs_ratio, 'RS_Momentum': rs_mom}).dropna()
+        # Combine metrics into a clean dataframe
+        ticker_df = pd.DataFrame({'RS_Ratio': rs_ratio, 'RS_Momentum': rs_mom}).dropna()
+        rrg_results[t] = ticker_df
         
     return rrg_results
 
