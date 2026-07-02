@@ -148,6 +148,11 @@ if trigger_go:
                     
                     head_x = x_raw[-1]
                     head_y = y_raw[-1]
+
+                    # 1. Extract and format the actual dates matching the historical nodes
+                    # Formats dates cleanly as YYYY-MM-DD
+                    dates_raw = tail_df.index.strftime('%Y-%m-%d').tolist()
+
                     
                     # Line Plot for the smoothed historic tail path 
                     fig.add_trace(go.Scatter(
