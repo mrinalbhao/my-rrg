@@ -116,15 +116,15 @@ if trigger_go:
                 fig = go.Figure()
                 all_x, all_y = [], []
                 
-                # Distinct color palette sequence matching institutional charts (XLE Red, XLK Blue/Orange)
-                color_palette = ["#d62728", "#ff7f0e", "#2ca02c", "#1f77b4", "#9467bd", "#8c564b", "#e377c2"]
+                      # Sequence matching institutional charts (XLE Red, XLK Blue/Orange)
+        color_palette = ["#d62728", "#ff7f0e", "#2ca02c", "#1f77b4", "#9467bd", "#8c564b", "#e377c2"]
+        
+        for idx, (ticker, df) in enumerate(raw_rrg_data.items()):
+            tail_df = df.tail(int(tail_points))
+            if len(tail_df) < 3:
+                continue
                 
-                for idx, (ticker, df) in enumerate(raw_rrg_data.items()):
-                    tail_df = df.tail(int(tail_points))
-                    if len(tail_df) < 3:
-                        continue
-
-                 # --- DYNAMIC 1-WORD DESCRIPTION FETCH ---
+            # --- DYNAMIC 1-WORD DESCRIPTION FETCH ---
             display_name = ticker
             try:
                 info = yf.Ticker(ticker).info
@@ -139,75 +139,65 @@ if trigger_go:
             except Exception:
                 pass # Safe fallback to raw ticker symbol if API limits or offline
             
-
-                    
-                    x_raw = tail_df['RS_Ratio'].values
-                    y_raw = tail_df['RS_Momentum'].values
-                    
-                    ticker_color = color_palette[idx % len(color_palette)]
-                    
-                    # Smooth out the lines seamlessly
-                    x_smooth, y_smooth = smooth_trajectory(x_raw, y_raw, steps=200)
-                    
-                    all_x.extend(x_raw)
-                    all_y.extend(y_raw)
-                    
-                    head_x = x_raw[-1]
-                    head_y = y_raw[-1]
-
-                    # 1. Extract and format the actual dates matching the historical nodes
-                    # Formats dates cleanly as YYYY-MM-DD
-                    dates_raw = tail_df.index.strftime('%Y-%m-%d').tolist()
-
-                    
-                    # Line Plot for the smoothed historic tail path 
-                    fig.add_trace(go.Scatter(
-                        x=x_smooth, y=y_smooth,
-                        mode='lines',
-                        name=f"{ticker} Path",
-                        line=dict(width=3, color=ticker_color),
-                        hoverinfo='skip'
-                    ))
-                    
-                    # Add simple structural checkpoint dots along the trail history nodes
-                    fig.add_trace(go.Scatter(
-                        x=x_raw[:-1], y=y_raw[:-1],
-                        mode='markers',
-                        name=f"{ticker} History",
-                        marker=dict(size=6, color=ticker_color, symbol='circle'),
-                        # hoverinfo='skip'
-
-                        # Map the formatted dates array to the historical node slice
-                        hovertext=dates_raw[:-1],
-                        # Define a custom hover tracking text template displaying metrics and dates
-                        hovertemplate=(
-                            f"<b>{ticker}</b><br>" +
-                            "Date: %{hovertext}<br>" +
-                            "RS-Ratio: %{x:.2f}<br>" +
-                            "RS-Momentum: %{y:.2f}<br>" +
-                            "<extra></extra>" # Hides the default secondary trace box
-                        )
-                    ))
-                    
-                    # Explicit Head Marker identifying current status node
-                    fig.add_trace(go.Scatter(
-                        x=[head_x], y=[head_y],
-                        mode='markers+text',
-                        name=ticker,
-                        text=[f"<b>{ticker}</b>"],
-                        textposition="top center",
-                        marker=dict(size=12, symbol='circle', color=ticker_color, line=dict(width=2, color='black')),
-                        # Pass the final date element matching the head node coordinates
-                        hovertext=[dates_raw[-1]],
-                        # Define identical hover tracking configurations as the history trail
-                        hovertemplate=(
-                            f"<b>{ticker}</b><br>" +
-                            "Date: %{hovertext}<br>" +
-                            "RS-Ratio: %{x:.2f}<br>" +
-                            "RS-Momentum: %{y:.2f}<br>" +
-                            "<extra></extra>"
-                        )
-                    ))
+            x_raw = tail_df['RS_Ratio'].values
+            y_raw = tail_df['RS_Momentum'].values
+            
+            ticker_color = color_palette[idx % len(color_palette)]
+            
+            # Smooth out the lines seamlessly
+            x_smooth, y_smooth = smooth_trajectory(x_raw, y_raw, steps=200)
+            
+            all_x.extend(x_raw)
+            all_y.extend(y_raw)
+            
+            head_x = x_raw[-1]
+            head_y = y_raw[-1]
+            
+            # Extract and format the actual dates matching historical nodes
+            dates_raw = tail_df.index.strftime('%Y-%m-%d').tolist()
+            
+            # Line Plot for the smoothed historic tail path 
+            fig.add_trace(go.Scatter(
+                x=x_smooth, y=y_smooth,
+                mode='lines',
+                name=f"{display_name} Path",
+                line=dict(width=3, color=ticker_color),
+                hoverinfo='skip'
+            ))
+            
+            # Add simple structural checkpoint dots along the trail history nodes
+            fig.add_trace(go.Scatter(
+                x=x_raw[:-1], y=y_raw[:-1],
+                mode='markers',
+                name=f"{display_name} History",
+                marker=dict(size=6, color=ticker_color, symbol='circle'),
+                hovertext=dates_raw[:-1],
+                hovertemplate=(
+                    f"<b>{display_name}</b><br>" +
+                    "Date: %{hovertext}<br>" +
+                    "RS-Ratio: %{x:.2f}<br>" +
+                    "RS-Momentum: %{y:.2f}<br>" +
+                    "<extra></extra>"
+                )
+            ))
+            
+            # Explicit Head Marker identifying current status node
+            fig.add_trace(go.Scatter(
+                x=[head_x], y=[head_y],
+                mode='markers+text',
+                name=display_name,
+                text=[f"<b>{display_name}</b>"],
+                textposition="top center",
+                marker=dict(size=12, symbol='circle', color=ticker_color, line=dict(width=2, color='black')),
+                hovertext=[dates_raw[-1]],
+                hovertemplate=(
+                    f"<b>{display_name}</b><br>" +
+                    "Date: %{hovertext}<br>" +
+                    "RS-Ratio: %{x:.2f}<br>" +
+                    "RS-Momentum: %{y:.2f}<br>" +
+                    "<extra></extra>"
+                )
+            ))
 
                 
                 if not all_x or not all_y:
