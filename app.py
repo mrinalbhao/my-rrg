@@ -238,5 +238,5 @@ if trigger_go:
                 fig.update_layout(width=950,height=780,xaxis=dict(title="RS-Ratio (Trend)", range=(x_min, x_max), zeroline=False),yaxis=dict(title="RS-Momentum (Velocity)", range=(y_min, y_max), zeroline=False),title=f"Relative Rotation Graph vs {bench_ticker} ({interval_choice} System)",showlegend=False)
 
                 st.plotly_chart(fig, use_container_width=True)
-                else:
-                st.info("Configure variables inside left side panel and click 'Render RRG Chart' to track structural transformations.")
+                # else:
+                # st.info("Configure variables inside left side panel and click 'Render RRG Chart' to track structural transformations.")
