@@ -123,7 +123,24 @@ if trigger_go:
                     tail_df = df.tail(int(tail_points))
                     if len(tail_df) < 3:
                         continue
-                        
+
+                 # --- DYNAMIC 1-WORD DESCRIPTION FETCH ---
+            display_name = ticker
+            try:
+                info = yf.Ticker(ticker).info
+                raw_name = info.get("shortName") or info.get("longName") or ""
+                if raw_name:
+                    # Clean punctuation and find the first meaningful industry word
+                    noise = {"SELECT", "SECTOR", "SPDR", "FUND", "INDEX", "ETF", "INC", "CORP"}
+                    words = [w.strip("(),.").upper() for w in raw_name.split() if w.strip("(),.")]
+                    clean_words = [w for w in words if w not in noise]
+                    if clean_words:
+                        display_name = f"{ticker} ({clean_words[0].lower().capitalize()})"
+            except Exception:
+                pass # Safe fallback to raw ticker symbol if API limits or offline
+            
+
+                    
                     x_raw = tail_df['RS_Ratio'].values
                     y_raw = tail_df['RS_Momentum'].values
                     
