@@ -116,10 +116,10 @@ if trigger_go:
                 fig = go.Figure()
                 all_x, all_y = [], []
                 
-                      # Sequence matching institutional charts (XLE Red, XLK Blue/Orange)
+        # Sequence matching institutional charts (XLE Red, XLK Blue/Orange)
         color_palette = ["#d62728", "#ff7f0e", "#2ca02c", "#1f77b4", "#9467bd", "#8c564b", "#e377c2"]
         
-        for idx, (ticker, df) in enumerate(raw_rrg_data.items()):
+              for idx, (ticker, df) in enumerate(raw_rrg_data.items()):
             tail_df = df.tail(int(tail_points))
             if len(tail_df) < 3:
                 continue
@@ -198,48 +198,48 @@ if trigger_go:
                     "<extra></extra>"
                 )
             ))
+     
+        if not all_x or not all_y:
+            st.error("Not enough historical data found to construct the RRG tail.")
+        else:
+            max_dev = max(
+                max(abs(np.array(all_x) - 100)), 
+                max(abs(np.array(all_y) - 100))
+            ) * 1.15
+            
+            if max_dev < 3:
+                max_dev = 3
+            
+            x_min, x_max = 100 - max_dev, 100 + max_dev
+            y_min, y_max = 100 - max_dev, 100 + max_dev
+            
+            # --- QUADRANT BACKGROUND SHADING CONFIGURATIONS ---
+            fig.add_vrect(x0=100, x1=x_max, y0=100, y1=y_max, fillcolor="rgba(0, 200, 0, 0.05)", layer="below", line_width=0) # Leading
+            fig.add_vrect(x0=100, x1=x_max, y0=y_min, y1=100, fillcolor="rgba(200, 200, 0, 0.05)", layer="below", line_width=0) # Weakening
+            fig.add_vrect(x0=x_min, x1=100, y0=y_min, y1=100, fillcolor="rgba(200, 0, 0, 0.05)", layer="below", line_width=0) # Lagging
+            fig.add_vrect(x0=x_min, x1=100, y0=100, y1=y_max, fillcolor="rgba(0, 0, 200, 0.05)", layer="below", line_width=0) # Improving
+            
+            # Thin Crosshair Center Lines
+            fig.add_shape(type="line", x0=100, y0=y_min, x1=100, y1=y_max, line=dict(color="black", width=1, dash="dash"))
+            fig.add_shape(type="line", x0=x_min, y0=100, x1=x_max, y1=100, line=dict(color="black", width=1, dash="dash"))
+            
+            # Quadrant Labels
+            fig.add_annotation(x=100 + (max_dev/2), y=100 + (max_dev/2), text="<b>LEADING</b>", font=dict(color="green", size=16), showarrow=False)
+            fig.add_annotation(x=100 + (max_dev/2), y=100 - (max_dev/2), text="<b>WEAKENING</b>", font=dict(color="gold", size=16), showarrow=False)
+            fig.add_annotation(x=100 - (max_dev/2), y=100 - (max_dev/2), text="<b>LAGGING</b>", font=dict(color="red", size=16), showarrow=False)
+            fig.add_annotation(x=100 - (max_dev/2), y=100 + (max_dev/2), text="<b>IMPROVING</b>", font=dict(color="blue", size=16), showarrow=False)
+            
+            # Final layout configurations
+            fig.update_layout(
+                width=950,
+                height=780,
+                xaxis=dict(title="<b>RS-Ratio (Trend)</b>", range=[x_min, x_max], zeroline=False),
+                yaxis=dict(title="<b>RS-Momentum (Velocity)</b>", range=[y_min, y_max], zeroline=False),
+                title=f"Relative Rotation Graph vs {bench_ticker} ({interval_choice} System)",
+                showlegend=False
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
 
-                
-                if not all_x or not all_y:
-                    st.error("Not enough historical data found to construct the RRG tail.")
-                else:
-                    max_dev = max(
-                        max(abs(np.array(all_x) - 100)), 
-                        max(abs(np.array(all_y) - 100))
-                    ) * 1.15
-                    
-                    if max_dev < 3:
-                        max_dev = 3
-                        
-                    x_min, x_max = 100 - max_dev, 100 + max_dev
-                    y_min, y_max = 100 - max_dev, 100 + max_dev
-                    
-                    # --- QUADRANT BACKGROUND SHADING CONFIGURATIONS ---
-                    fig.add_vrect(x0=100, x1=x_max, y0=100, y1=y_max, fillcolor="rgba(0, 200, 0, 0.05)", layer="below", line_width=0)  # Leading
-                    fig.add_vrect(x0=100, x1=x_max, y0=y_min, y1=100, fillcolor="rgba(200, 200, 0, 0.05)", layer="below", line_width=0)  # Weakening
-                    fig.add_vrect(x0=x_min, x1=100, y0=y_min, y1=100, fillcolor="rgba(200, 0, 0, 0.05)", layer="below", line_width=0)  # Lagging
-                    fig.add_vrect(x0=x_min, x1=100, y0=100, y1=y_max, fillcolor="rgba(0, 0, 200, 0.05)", layer="below", line_width=0)  # Improving
-                    
-                    # Thin Crosshair Center Lines
-                    fig.add_shape(type="line", x0=100, y0=y_min, x1=100, y1=y_max, line=dict(color="black", width=1, dash="dash"))
-                    fig.add_shape(type="line", x0=x_min, y0=100, x1=x_max, y1=100, line=dict(color="black", width=1, dash="dash"))
-                    
-                    # Quadrant Labels
-                    fig.add_annotation(x=100 + (max_dev/2), y=100 + (max_dev/2), text="<b>LEADING</b>", font=dict(color="green", size=16), showarrow=False)
-                    fig.add_annotation(x=100 + (max_dev/2), y=100 - (max_dev/2), text="<b>WEAKENING</b>", font=dict(color="gold", size=16), showarrow=False)
-                    fig.add_annotation(x=100 - (max_dev/2), y=100 - (max_dev/2), text="<b>LAGGING</b>", font=dict(color="red", size=16), showarrow=False)
-                    fig.add_annotation(x=100 - (max_dev/2), y=100 + (max_dev/2), text="<b>IMPROVING</b>", font=dict(color="blue", size=16), showarrow=False)
-                    
-                    # Final layout configurations
-                    fig.update_layout(
-                        width=950,
-                        height=780,
-                        xaxis=dict(title="<b>RS-Ratio (Trend)</b>", range=[x_min, x_max], zeroline=False),
-                        yaxis=dict(title="<b>RS-Momentum (Velocity)</b>", range=[y_min, y_max], zeroline=False),
-                        title=f"Relative Rotation Graph vs {bench_ticker} ({interval_choice} System)",
-                        showlegend=False
-                    )
-                    
-                    st.plotly_chart(fig, use_container_width=True)
 else:
     st.info("Configure variables inside left side panel and click 'Render RRG Chart' to track structural transformations.")
