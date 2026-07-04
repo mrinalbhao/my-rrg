@@ -228,5 +228,15 @@ if trigger_go:
                 fig.add_shape(type="line", x0=x_min, y0=100, x1=x_max, y1=100, line=dict(color="black", width=1, dash="dash"))
                 
                 # Quadrant Labels
+                fig.add_annotation(x=100 + (max_dev/2), y=100 + (max_dev/2), text="LEADING", font=dict(color="green", size=16), showarrow=False)
+                fig.add_annotation(x=100 + (max_dev/2), y=100 - (max_dev/2), text="WEAKENING", font=dict(color="gold", size=16), showarrow=False)
+                fig.add_annotation(x=100 - (max_dev/2), y=100 - (max_dev/2), text="LAGGING", font=dict(color="red", size=16), showarrow=False)
+                fig.add_annotation(x=100 - (max_dev/2), y=100 + (max_dev/2), text="IMPROVING", font=dict(color="blue", size=16), showarrow=False)
 
-fig.add_annotation(x=100 + (max_dev/2), y=100 + (max_dev/2), text="LEADING", font=dict(color="green", size=16), showarrow=False)fig.add_annotation(x=100 + (max_dev/2), y=100 - (max_dev/2), text="WEAKENING", font=dict(color="gold", size=16), showarrow=False)fig.add_annotation(x=100 - (max_dev/2), y=100 - (max_dev/2), text="LAGGING", font=dict(color="red", size=16), showarrow=False)fig.add_annotation(x=100 - (max_dev/2), y=100 + (max_dev/2), text="IMPROVING", font=dict(color="blue", size=16), showarrow=False)# Final layout configurationsfig.update_layout(width=950,height=780,xaxis=dict(title="RS-Ratio (Trend)", range=(x_min, x_max), zeroline=False),yaxis=dict(title="RS-Momentum (Velocity)", range=(y_min, y_max), zeroline=False),title=f"Relative Rotation Graph vs {bench_ticker} ({interval_choice} System)",showlegend=False)st.plotly_chart(fig, use_container_width=True)else:st.info("Configure variables inside left side panel and click 'Render RRG Chart' to track structural transformations.")
+                # Final layout configurations
+
+                fig.update_layout(width=950,height=780,xaxis=dict(title="RS-Ratio (Trend)", range=(x_min, x_max), zeroline=False),yaxis=dict(title="RS-Momentum (Velocity)", range=(y_min, y_max), zeroline=False),title=f"Relative Rotation Graph vs {bench_ticker} ({interval_choice} System)",showlegend=False)
+
+                st.plotly_chart(fig, use_container_width=True)
+                else:
+                st.info("Configure variables inside left side panel and click 'Render RRG Chart' to track structural transformations.")
