@@ -1,238 +1,207 @@
-
+import datetime
+import numpy as np
+import pandas as pd
+import plotly.graph_objects as px
+import plotly.graph_objects as go
 import streamlit as st
 import yfinance as yf
-import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
-from scipy.interpolate import CubicSpline
 
-# Page Configuration
-st.set_page_config(page_title="Custom RRG Dashboard", layout="wide")
-st.title("📈 Custom Relative Rotation Graph (RRG) Generator")
-st.markdown("Track momentum and relative strength trends mapped smoothly across market quadrants.")
+# ---------------------------------------------------------
+# CONSTANTS & CONFIGURATION
+# ---------------------------------------------------------
+TICKER_OPTIONS = [
+    "IGV", "SMH", "DRAM", "BOTZ", "PPA", "LIT", "LYTE", "LAZR", "BOTT", 
+    "DTCR", "QTUM", "HACK", "SKYY", "NLR", "SHLD", "WARP", "IBB", "DRIV", 
+    "REMX", "FINX", "HERO"
+]
 
-# --- SIDEBAR CONTROLS ---
-st.sidebar.header("Configuration Settings")
+st.set_page_config(layout="wide", page_title="Custom Sub-Sector RRG Matrix")
 
-# Text input for Custom Tickers
-ticker_input = st.sidebar.text_input(
-    "Asset Tickers (Comma separated)", 
-    value="XLE, XLK"
-)
+# ---------------------------------------------------------
+# DYNAMIC STATE MANAGEMENT (Dropdown & Comma-Separated Box)
+# ---------------------------------------------------------
+# Step 1: Initialise the unified state string if it doesn't exist
+if "ticker_string" not in st.session_state:
+    st.session_state.ticker_string = "IGV, SMH, DRAM, BOTZ, PPA"
 
-# Text input for Benchmark
-benchmark_input = st.sidebar.text_input(
-    "Benchmark Ticker (e.g., SPY, QQQ)", 
-    value="SPY"
-)
-
-# Combo Box for Interval
-interval_choice = st.sidebar.selectbox(
-    "Data Time Interval",
-    options=["1 Day", "1 Week"],
-    index=1  # Default to 1 Week to match your chart
-)
-
-# Tail points input 
-tail_points = st.sidebar.number_input(
-    "Number of Tail Points (History)", 
-    min_value=3, 
-    max_value=100, 
-    value=10, 
-    step=1
-)
-
-# Go Button
-trigger_go = st.sidebar.button("🚀 Render RRG Chart")
-
-def calculate_rrg_metrics(tickers, benchmark, interval_str, history_needed):
-    """Fetches stock data and extracts standard RS-Ratio and RS-Momentum lines."""
-    # Force daily downloads if 1 Week is requested to manually resample data points
-    yf_interval = "1d" if interval_str == "1 Week" else {"1 Day": "1d"}[interval_str]
+# Callback: Fired whenever user alters the checklist dropdown
+def update_text_from_dropdown():
+    selected_from_dropdown = st.session_state.dropdown_select
     
-    all_tickers = list(set(tickers + [benchmark]))
-    data = yf.download(all_tickers, period=history_needed, interval=yf_interval, group_by='column')
+    # Extract any manually typed tickers that are NOT in our pre-defined options array
+    current_tokens = [t.strip().upper() for t in st.session_state.text_box_input.split(",") if t.strip()]
+    custom_manual_tokens = [t for t in current_tokens if t not in TICKER_OPTIONS]
     
-    if data.empty: return None
+    # Maintain manual user entries and append newly checked options cleanly
+    combined_list = custom_manual_tokens + selected_from_dropdown
+    st.session_state.ticker_string = ", ".join(combined_list)
+
+# Callback: Fired if a user modifies the plain text field manually
+def update_dropdown_from_text():
+    current_tokens = [t.strip().upper() for t in st.session_state.text_box_input.split(",") if t.strip()]
+    # Update the select box state to match what's currently written in the box
+    matched_dropdown_tokens = [t for t in current_tokens if t in TICKER_OPTIONS]
+    st.session_state.dropdown_select = matched_dropdown_tokens
+    st.session_state.ticker_string = st.session_state.text_box_input
+
+# ---------------------------------------------------------
+# APP UI LAYOUT
+# ---------------------------------------------------------
+st.title("📊 Custom Thematic Relative Rotation Graph (RRG)")
+st.caption("Track rotational momentum configurations across specialized technical sub-sectors.")
+
+with st.sidebar:
+    st.header("⚙️ Configuration Engine")
+    
+    # 2. Main Comma-Separated Text Box
+    ticker_input_string = st.text_input(
+        "Tickers to Plot (Comma-Separated Grid):",
+        key="text_box_input",
+        value=st.session_state.ticker_string,
+        on_change=update_dropdown_from_text,
+        help="Type symbols manually or let checkboxes populate this field dynamically."
+    )
+    
+    # Read the current string to determine defaults for multi-select
+    current_text_tokens = [t.strip().upper() for t in ticker_input_string.split(",") if t.strip()]
+    dropdown_default = [t for t in current_text_tokens if t in TICKER_OPTIONS]
+
+    # 3. Checkbox Multi-Select Tool (Synchronized)
+    selected_dropdown = st.multiselect(
+        "Select Sub-Sector Tickers to Add:",
+        options=TICKER_OPTIONS,
+        default=dropdown_default,
+        key="dropdown_select",
+        on_change=update_text_from_dropdown,
+        help="Checking these boxes adds them instantly into the manual input box above."
+    )
+    
+    st.markdown("---")
+    
+    # Benchmark and Time Controls
+    benchmark_input = st.text_input("Benchmark Ticker (RRG Axis Center):", value="RSP", help="Use equal weight index (e.g. RSP) to balance cross-industry signals.")
+    tail_length = st.slider("Historical Tail Length (Periods):", min_value=2, max_value=30, value=5)
+    history_window = st.selectbox("Lookback History Period:", options=["1y", "2y", "6mo", "3y"], index=0)
+    rolling_window = st.slider("Smoothing Window (Standard JdK is 14):", min_value=5, max_value=30, value=14)
+    
+    plot_trigger = st.button("Generate RRG Matrix Plot", type="primary")
+
+# Final clean array compilation
+final_ticker_list = [ticker.strip().upper() for ticker in st.session_state.ticker_string.split(",") if ticker.strip()]
+
+# ---------------------------------------------------------
+# MATHEMATICAL RRG COMPONENT ENGINE
+# ---------------------------------------------------------
+def calculate_rrg_metrics(tickers, benchmark, period, window):
+    all_symbols = list(set(tickers + [benchmark]))
+    # Fetch historical adjusted close data
+    data = yf.download(all_symbols, period=period, progress=False)["Adj Close"]
+    
+    if data.empty or benchmark not in data.columns:
+        return None, None
         
-    df_close = data['Close'] if 'Close' in data.columns else pd.DataFrame()
-    df_close = df_close.dropna()
-    if benchmark not in df_close.columns: return None
-
-    # --- ADVANCED TIME-RESAMPLING FOR ACCURATE TAIL-END NODES ---
-    if interval_str == "1 Week":
-        # Aggregate daily to weekly and adjust index to end on Friday
-        df_close = df_close.resample('W').last().dropna()
-        df_close.index = df_close.index - pd.to_timedelta(df_close.index.dayofweek - 4, unit='D')
-        df_close = df_close.dropna()
-
-    rrg_results = {}
-    for t in tickers:
-        if t not in df_close.columns or t == benchmark: continue
-            
-        rs_raw = (df_close[t] / df_close[benchmark]) * 100
-        rs_ema1 = rs_raw.ewm(span=14, adjust=False).mean()
-        rs_ema2 = rs_ema1.ewm(span=14, adjust=False).mean()
-        rs_std = rs_raw.rolling(window=14).std()
-        rs_ratio = 100 + ((rs_ema2 - rs_ema2.rolling(window=14).mean()) / (rs_std + 1e-8)) * 10
-        
-        rs_mom_ema = rs_ratio.ewm(span=14, adjust=False).mean()
-        rs_mom = 100 + ((rs_ratio - rs_mom_ema) / (rs_ratio.rolling(window=14).std() + 1e-8)) * 10
-        
-        rrg_results[t] = pd.DataFrame({'RS_Ratio': rs_ratio, 'RS_Momentum': rs_mom}).dropna()
-        
-    return rrg_results
-
-
-def smooth_trajectory(x_coords, y_coords, steps=100):
-    """Uses a Cubic Spline to smoothly fill spaces between jagged data nodes."""
-    t_original = np.linspace(0, 1, len(x_coords))
-    t_smooth = np.linspace(0, 1, steps)
+    df_assets = data[tickers]
+    df_bench = data[benchmark]
     
-    cs_x = CubicSpline(t_original, x_coords)
-    cs_y = CubicSpline(t_original, y_coords)
+    # Step 1: Base Relative Strength Calculation
+    rs_ratio_df = pd.DataFrame()
+    for col in df_assets.columns:
+        # Relative Strength base line
+        rs_ratio_df[col] = (df_assets[col] / df_bench) * 100
+        
+    # Step 2: Extract Moving Averages and compute standard tracking deviation
+    rs_mean = rs_ratio_df.rolling(window=window).mean()
+    rs_std = rs_ratio_df.rolling(window=window).std()
     
-    return cs_x(t_smooth), cs_y(t_smooth)
+    # Step 3: Compute standardized Z-Scores representing the RS-Ratio Value
+    rs_ratio_normalized = ((rs_ratio_df - rs_mean) / rs_std) + 100
+    
+    # Step 4: Calculate Velocity Rate-Of-Change representing RS-Momentum Value
+    rs_momentum_raw = rs_ratio_normalized.pct_change(periods=1) * 100
+    mom_mean = rs_momentum_raw.rolling(window=window).mean()
+    mom_std = rs_momentum_raw.rolling(window=window).std()
+    rs_momentum_normalized = ((rs_momentum_raw - mom_mean) / mom_std) + 100
+    
+    return rs_ratio_normalized.dropna(), rs_momentum_normalized.dropna()
 
-# --- APPLICATION LOGIC ---
-if trigger_go:
-    parsed_tickers = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
-    bench_ticker = benchmark_input.strip().upper()
-    
-    if not parsed_tickers or not bench_ticker:
-        st.error("Please provide both valid asset symbols and a benchmark tracker.")
+# ---------------------------------------------------------
+# CHART PLOTTING EXECUTION
+# ---------------------------------------------------------
+if plot_trigger or len(final_ticker_list) > 0:
+    if not final_ticker_list:
+        st.warning("Please supply or check at least one sub-sector symbol vector to construct the canvas.")
     else:
-        with st.spinner("Analyzing market momentum fields and generating clean vectors..."):
-            raw_rrg_data = calculate_rrg_metrics(
-                tickers=parsed_tickers, 
-                benchmark=bench_ticker, 
-                interval_str=interval_choice, 
-                history_needed="2y"
+        with st.spinner("Downloading financial data models and calculating indicators..."):
+            ratio_df, momentum_df = calculate_rrg_metrics(
+                tickers=final_ticker_list,
+                benchmark=benchmark_input.strip().upper(),
+                period=history_window,
+                window=rolling_window
             )
             
-            if not raw_rrg_data:
-                st.error("Data tracking failed. Please ensure stock tickers exist on Yahoo Finance.")
-            else:
-                fig = go.Figure()
-                all_x, all_y = [], []
+        if ratio_df is None or ratio_df.empty:
+            st.error("Error retrieving asset data from provider. Verify symbol spelling.")
+        else:
+            # Initialize complete Plotly figure canvas
+            fig = go.Figure()
+            
+            # Map structural quadrant background layouts
+            fig.add_shape(type="rect", x0=100, y0=100, x1=105, y1=105, fillcolor="rgba(0, 200, 0, 0.08)", line_width=0) # Leading
+            fig.add_shape(type="rect", x0=100, y0=95, x1=105, y1=100, fillcolor="rgba(200, 200, 0, 0.08)", line_width=0) # Weakening
+            fig.add_shape(type="rect", x0=95, y0=95, x1=100, y1=100, fillcolor="rgba(200, 0, 0, 0.08)", line_width=0)   # Lagging
+            fig.add_shape(type="rect", x0=95, y0=100, x1=100, y1=105, fillcolor="rgba(0, 0, 200, 0.08)", line_width=0)  # Improving
+            
+            # Draw baseline center grid crosshairs
+            fig.add_hline(y=100, line_dash="dash", line_color="rgba(100,100,100,0.5)", line_width=1.5)
+            fig.add_vline(x=100, line_dash="dash", line_color="rgba(100,100,100,0.5)", line_width=1.5)
+            
+            # Extract and draw lines for each verified ticker asset 
+            available_tickers = ratio_df.columns
+            
+            for ticker in available_tickers:
+                # Grab ending slices matching historical tail limit parameter
+                x_trail = ratio_df[ticker].tail(tail_length).values
+                y_trail = momentum_df[ticker].tail(tail_length).values
                 
-                # Distinct color palette sequence matching institutional charts (XLE Red, XLK Blue/Orange)
-                color_palette = ["#d62728", "#ff7f0e", "#2ca02c", "#1f77b4", "#9467bd", "#8c564b", "#e377c2"]
+                if len(x_trail) == 0:
+                    continue
                 
-                for idx, (ticker, df) in enumerate(raw_rrg_data.items()):
-                    tail_df = df.tail(int(tail_points))
-                    if len(tail_df) < 3:
-                        continue
-                        
-                    x_raw = tail_df['RS_Ratio'].values
-                    y_raw = tail_df['RS_Momentum'].values
-                    
-                    ticker_color = color_palette[idx % len(color_palette)]
-                    
-                    # Smooth out the lines seamlessly
-                    x_smooth, y_smooth = smooth_trajectory(x_raw, y_raw, steps=200)
-                    
-                    all_x.extend(x_raw)
-                    all_y.extend(y_raw)
-                    
-                    head_x = x_raw[-1]
-                    head_y = y_raw[-1]
-
-                    # 1. Extract and format the actual dates matching the historical nodes
-                    # Formats dates cleanly as YYYY-MM-DD
-                    dates_raw = tail_df.index.strftime('%Y-%m-%d').tolist()
-
-                    
-                    # Line Plot for the smoothed historic tail path 
-                    fig.add_trace(go.Scatter(
-                        x=x_smooth, y=y_smooth,
-                        mode='lines',
-                        name=f"{ticker} Path",
-                        line=dict(width=3, color=ticker_color),
-                        hoverinfo='skip'
-                    ))
-                    
-                    # Add simple structural checkpoint dots along the trail history nodes
-                    fig.add_trace(go.Scatter(
-                        x=x_raw[:-1], y=y_raw[:-1],
-                        mode='markers',
-                        name=f"{ticker} History",
-                        marker=dict(size=6, color=ticker_color, symbol='circle'),
-                        # hoverinfo='skip'
-
-                        # Map the formatted dates array to the historical node slice
-                        hovertext=dates_raw[:-1],
-                        # Define a custom hover tracking text template displaying metrics and dates
-                        hovertemplate=(
-                            f"<b>{ticker}</b><br>" +
-                            "Date: %{hovertext}<br>" +
-                            "RS-Ratio: %{x:.2f}<br>" +
-                            "RS-Momentum: %{y:.2f}<br>" +
-                            "<extra></extra>" # Hides the default secondary trace box
-                        )
-                    ))
-                    
-                    # Explicit Head Marker identifying current status node
-                    fig.add_trace(go.Scatter(
-                        x=[head_x], y=[head_y],
-                        mode='markers+text',
-                        name=ticker,
-                        text=[f"<b>{ticker}</b>"],
-                        textposition="top center",
-                        marker=dict(size=12, symbol='circle', color=ticker_color, line=dict(width=2, color='black')),
-                        # Pass the final date element matching the head node coordinates
-                        hovertext=[dates_raw[-1]],
-                        # Define identical hover tracking configurations as the history trail
-                        hovertemplate=(
-                            f"<b>{ticker}</b><br>" +
-                            "Date: %{hovertext}<br>" +
-                            "RS-Ratio: %{x:.2f}<br>" +
-                            "RS-Momentum: %{y:.2f}<br>" +
-                            "<extra></extra>"
-                        )
-                    ))
-
+                # Draw the historical rotation momentum lines (Tail)
+                fig.add_trace(go.Scatter(
+                    x=x_trail, y=y_trail,
+                    mode="lines",
+                    name=f"{ticker} Trail",
+                    line=dict(width=2),
+                    hoverinfo="skip",
+                    showlegend=False
+                ))
                 
-                if not all_x or not all_y:
-                    st.error("Not enough historical data found to construct the RRG tail.")
-                else:
-                    max_dev = max(
-                        max(abs(np.array(all_x) - 100)), 
-                        max(abs(np.array(all_y) - 100))
-                    ) * 1.15
-                    
-                    if max_dev < 3:
-                        max_dev = 3
-                        
-                    x_min, x_max = 100 - max_dev, 100 + max_dev
-                    y_min, y_max = 100 - max_dev, 100 + max_dev
-                    
-                    # --- QUADRANT BACKGROUND SHADING CONFIGURATIONS ---
-                    fig.add_vrect(x0=100, x1=x_max, y0=100, y1=y_max, fillcolor="rgba(0, 200, 0, 0.05)", layer="below", line_width=0)  # Leading
-                    fig.add_vrect(x0=100, x1=x_max, y0=y_min, y1=100, fillcolor="rgba(200, 200, 0, 0.05)", layer="below", line_width=0)  # Weakening
-                    fig.add_vrect(x0=x_min, x1=100, y0=y_min, y1=100, fillcolor="rgba(200, 0, 0, 0.05)", layer="below", line_width=0)  # Lagging
-                    fig.add_vrect(x0=x_min, x1=100, y0=100, y1=y_max, fillcolor="rgba(0, 0, 200, 0.05)", layer="below", line_width=0)  # Improving
-                    
-                    # Thin Crosshair Center Lines
-                    fig.add_shape(type="line", x0=100, y0=y_min, x1=100, y1=y_max, line=dict(color="black", width=1, dash="dash"))
-                    fig.add_shape(type="line", x0=x_min, y0=100, x1=x_max, y1=100, line=dict(color="black", width=1, dash="dash"))
-                    
-                    # Quadrant Labels
-                    fig.add_annotation(x=100 + (max_dev/2), y=100 + (max_dev/2), text="<b>LEADING</b>", font=dict(color="green", size=16), showarrow=False)
-                    fig.add_annotation(x=100 + (max_dev/2), y=100 - (max_dev/2), text="<b>WEAKENING</b>", font=dict(color="gold", size=16), showarrow=False)
-                    fig.add_annotation(x=100 - (max_dev/2), y=100 - (max_dev/2), text="<b>LAGGING</b>", font=dict(color="red", size=16), showarrow=False)
-                    fig.add_annotation(x=100 - (max_dev/2), y=100 + (max_dev/2), text="<b>IMPROVING</b>", font=dict(color="blue", size=16), showarrow=False)
-                    
-                    # Final layout configurations
-                    fig.update_layout(
-                        width=950,
-                        height=780,
-                        xaxis=dict(title="<b>RS-Ratio (Trend)</b>", range=[x_min, x_max], zeroline=False),
-                        yaxis=dict(title="<b>RS-Momentum (Velocity)</b>", range=[y_min, y_max], zeroline=False),
-                        title=f"Relative Rotation Graph vs {bench_ticker} ({interval_choice} System)",
-                        showlegend=False
-                    )
-                    
-                    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("Configure variables inside left side panel and click 'Render RRG Chart' to track structural transformations.")
+                # Plot the current endpoint node marker
+                fig.add_trace(go.Scatter(
+                    x=[x_trail[-1]], y=[y_trail[-1]],
+                    mode="markers+text",
+                    name=ticker,
+                    text=[ticker],
+                    textposition="top center",
+                    marker=dict(size=10, line=dict(width=1, color="white")),
+                    hovertemplate=f"<b>{ticker}</b><br>RS-Ratio: %{{x:.2f}}<br>RS-Mom: %{{y:.2f}}<extra></extra>"
+                ))
+            
+            # Quadrant Text Anchors
+            annotations = [
+                dict(x=102.5, y=104.5, text="<b>LEADING</b>", showarrow=False, font=dict(color="green", size=14)),
+                dict(x=102.5, y=95.5, text="<b>WEAKENING</b>", showarrow=False, font=dict(color="darkgoldenrod", size=14)),
+                dict(x=97.5, y=95.5, text="<b>LAGGING</b>", showarrow=False, font=dict(color="red", size=14)),
+                dict(x=97.5, y=104.5, text="<b>IMPROVING</b>", showarrow=False, font=dict(color="blue", size=14))
+            ]
+            
+            fig.update_layout(
+                title=dict(text=f"Relative Rotation Graph vs {benchmark_input.upper()}", font=dict(size=18)),
+                xaxis=dict(title="RS-Ratio", range=[95, 105]),
+                yaxis=dict(title="RS-Momentum", range=[95, 105]),
+                annotations=annotations,
+                height=700,
+                template="plotly_white",
+                margin=dict(l=20, r=20, t=50, b=20)
+            )
+            
