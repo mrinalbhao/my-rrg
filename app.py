@@ -17,7 +17,7 @@ st.sidebar.header("Configuration Settings")
 # Text input for Custom Tickers
 ticker_input = st.sidebar.text_input(
     "Asset Tickers (Comma separated)", 
-    value="IGV, SMH, DRAM, BOTZ, PPA, LIT, LYTE, LAZR, BOTT, DTCR, QTUM, HACK, SKYY, NLR, SHLD, WARP, IBB, DRIV, REMX, FINX, HERO"
+    value="IGV, SMH, XLE, XLK"
 )
 
 # Text input for Benchmark
