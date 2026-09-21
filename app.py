@@ -15,17 +15,18 @@ st.markdown("Track momentum and relative strength trends mapped smoothly across 
 st.markdown("""
 <style>
 section[data-testid="stSidebar"] .block-container { padding-top: 1.2rem; }
-section[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] { gap: 0.6rem; }
+section[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] { gap: 0.5rem; }
 section[data-testid="stSidebar"] .stCheckbox {
     margin-bottom: 2px;
     padding: 1px 0;
 }
 section[data-testid="stSidebar"] .stCheckbox label p { font-size: 0.9rem; }
-section[data-testid="stSidebar"] hr { margin: 0.6rem 0; }
+section[data-testid="stSidebar"] hr { margin: 0.45rem 0; }
 section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 {
     margin-top: 0; margin-bottom: 0.4rem; padding-top: 0;
 }
-section[data-testid="stSidebar"] .stButton button { padding: 0.35rem 0.6rem; }
+section[data-testid="stSidebar"] .stButton button { padding: 0.3rem 0.5rem; }
+section[data-testid="stSidebar"] .stCaption { margin-top: -4px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -38,6 +39,10 @@ DEFAULT_TICKERS = [
     "IGV", "SMH", "BOTZ", "PPA", "LIT", "BOTT", "DTCR", "QTUM", "HACK",
     "SKYY", "NLR", "SHLD", "IBB", "DRIV", "REMX", "FINX", "HERO"
 ]
+
+# A second, separate permanent checklist — the SPDR sector ETFs — with its
+# own All/None controls, shown below the default 17 in blue.
+SECTOR_TICKERS = ["XLC", "XLY", "XLP", "XLE", "XLF", "XLV", "XLI", "XLB", "XLK", "XLU"]
 
 # Text input for ADDITIONAL tickers — these always render, no checkbox needed,
 # and are layered on top of whichever DEFAULT_TICKERS are checked.
@@ -68,7 +73,7 @@ tail_points = st.sidebar.number_input(
     step=1
 )
 
-# --- VISIBILITY CHECKBOXES ---
+# --- VISIBILITY CHECKBOXES: GROUP 1 (DEFAULT_TICKERS, red) ---
 # Fixed set of DEFAULT_TICKERS. Unchecking one hides its trail from the
 # chart without refetching anything and without ever removing it from view here.
 st.sidebar.markdown("---")
@@ -77,8 +82,8 @@ CHK_PREFIX = "chk_"
 
 header_col, all_col, none_col = st.sidebar.columns([2, 1, 1])
 header_col.markdown("**Visible Tickers**")
-select_all = all_col.button("All", use_container_width=True)
-clear_all = none_col.button("None", use_container_width=True)
+select_all = all_col.button("All", use_container_width=True, key="all_default")
+clear_all = none_col.button("None", use_container_width=True, key="none_default")
 
 # Seed state for the default tickers (default: visible), then honour the
 # bulk buttons. Both happen before the widgets are instantiated.
@@ -94,20 +99,50 @@ for t in DEFAULT_TICKERS:
 # 3 columns keeps 17 tickers to 6 short rows instead of 17.
 chk_cols = st.sidebar.columns(3)
 for i, t in enumerate(DEFAULT_TICKERS):
-    chk_cols[i % 3].checkbox(t, key=CHK_PREFIX + t)
+    chk_cols[i % 3].checkbox(f":red[{t}]", key=CHK_PREFIX + t)
 
 checked_defaults = [t for t in DEFAULT_TICKERS if st.session_state.get(CHK_PREFIX + t, True)]
 
-# Final render list: checked defaults + always-on extras, de-duplicated,
-# preserving default order first then any new extras.
-parsed_tickers = list(dict.fromkeys(DEFAULT_TICKERS + extra_tickers))  # full universe, for colour stability
-selected_tickers = list(dict.fromkeys(checked_defaults + extra_tickers))
+# --- VISIBILITY CHECKBOXES: GROUP 2 (SECTOR_TICKERS, blue) ---
+# Separate permanent set, its own All/None controls, independent state keys.
+st.sidebar.markdown("---")
 
-st.sidebar.caption(f"{len(selected_tickers)} shown ({len(checked_defaults)} checked + {len(extra_tickers)} extra)")
+CHK2_PREFIX = "chksec_"
+
+header_col2, all_col2, none_col2 = st.sidebar.columns([2, 1, 1])
+header_col2.markdown("**Sector ETFs**")
+select_all2 = all_col2.button("All", use_container_width=True, key="all_sector")
+clear_all2 = none_col2.button("None", use_container_width=True, key="none_sector")
+
+for t in SECTOR_TICKERS:
+    key = CHK2_PREFIX + t
+    if key not in st.session_state:
+        st.session_state[key] = True
+    if select_all2:
+        st.session_state[key] = True
+    if clear_all2:
+        st.session_state[key] = False
+
+# 5 columns keeps all 10 sector ETFs to just 2 short rows.
+chk_cols2 = st.sidebar.columns(5)
+for i, t in enumerate(SECTOR_TICKERS):
+    chk_cols2[i % 5].checkbox(f":blue[{t}]", key=CHK2_PREFIX + t)
+
+checked_sectors = [t for t in SECTOR_TICKERS if st.session_state.get(CHK2_PREFIX + t, True)]
+
+# Final render list: checked tickers from BOTH groups + always-on extras,
+# de-duplicated, preserving group order then any new extras.
+parsed_tickers = list(dict.fromkeys(DEFAULT_TICKERS + SECTOR_TICKERS + extra_tickers))  # full universe, for colour stability
+selected_tickers = list(dict.fromkeys(checked_defaults + checked_sectors + extra_tickers))
+
+st.sidebar.caption(
+    f"{len(selected_tickers)} shown "
+    f"({len(checked_defaults)} core + {len(checked_sectors)} sector + {len(extra_tickers)} extra)"
+)
 
 st.sidebar.markdown("---")
 
-# Go Button
+# Single Go Button — covers both groups plus any extras
 trigger_go = st.sidebar.button("🚀 Render RRG Chart", type="primary", use_container_width=True)
 
 
@@ -205,6 +240,11 @@ if st.session_state.get("rrg_rendered"):
                     "#8c564b", "#e377c2", "#17becf", "#bcbd22", "#7f7f7f",
                     "#aec7e8", "#ffbb78", "#98df8a", "#ff9896", "#c5b0d5",
                     "#c49c94", "#f7b6d2",
+                    # extended so the 10 sector ETFs each get their own
+                    # distinct colour instead of wrapping and reusing one
+                    # of the 17 core tickers' colours
+                    "#393b79", "#637939", "#8c6d31", "#843c39", "#7b4173",
+                    "#3182bd", "#e6550d", "#31a354", "#756bb1", "#636363",
                 ]
                 # Colour is pinned to the ticker's slot in the full text-box list,
                 # so hiding one ticker never recolours the others.
