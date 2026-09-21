@@ -141,50 +141,19 @@ def calculate_rrg_metrics(tickers, benchmark, interval_str, history_needed):
         df_close.index = df_close.index - pd.to_timedelta(df_close.index.dayofweek - 4, unit='D')
         df_close = df_close.dropna()
 
-    # Two separate timescales, deliberately decoupled:
-    #   SMOOTH_SPAN  - short EMA span used to de-noise the raw ratio/RS-Ratio line
-    #   NORM_WINDOW  - much longer lookback used only as the statistical baseline
-    #                  (rolling mean/std) that RS-Ratio/RS-Momentum are scored against.
-    # NORM_WINDOW is expressed in BARS, so it must differ between daily and
-    # weekly data to represent roughly the same real-world lookback (~1 year).
-    #
-    # Critically, min_periods == NORM_WINDOW (a FULL window, no partial-window
-    # ramp-up). Letting the window "fill up" gradually (the old min_periods=20)
-    # means the rolling std's sample size keeps growing for the first ~80 bars
-    # of a series' life, which makes the std itself drift for reasons that have
-    # nothing to do with the security - it's just measurement noise from a
-    # thin sample. That drift is what turned smooth curves into loops/hooks:
-    # older tail points near the start of the series had had a tiny, unstable
-    # sample size (a small std that inflates the z-score), while more recent
-    # points sat inside a fully-populated, stable window (a bigger std that
-    # compresses the z-score) - a purely artificial trend layered on top of
-    # the real one. Requiring a full window everywhere removes that artifact;
-    # the fetch below pulls enough extra history as "burn-in" so the window is
-    # already stable before the earliest bar you actually choose to display.
-    SMOOTH_SPAN = 14
-    NORM_WINDOW = 52 if interval_str == "1 Week" else 252  # ~1 year either way
-
     rrg_results = {}
     for t in tickers:
         if t not in df_close.columns or t == benchmark:
             continue
 
         rs_raw = (df_close[t] / df_close[benchmark]) * 100
-        rs_ema1 = rs_raw.ewm(span=SMOOTH_SPAN, adjust=False).mean()
-        rs_ema2 = rs_ema1.ewm(span=SMOOTH_SPAN, adjust=False).mean()
+        rs_ema1 = rs_raw.ewm(span=14, adjust=False).mean()
+        rs_ema2 = rs_ema1.ewm(span=14, adjust=False).mean()
+        rs_std = rs_raw.rolling(window=14).std()
+        rs_ratio = 100 + ((rs_ema2 - rs_ema2.rolling(window=14).mean()) / (rs_std + 1e-8)) * 10
 
-        # RS-Ratio: z-score of the smoothed ratio against ITS OWN longer-run
-        # mean/std, using a full, fixed-size window throughout.
-        rs_baseline_mean = rs_ema2.rolling(window=NORM_WINDOW, min_periods=NORM_WINDOW).mean()
-        rs_baseline_std = rs_ema2.rolling(window=NORM_WINDOW, min_periods=NORM_WINDOW).std()
-        rs_ratio = 100 + ((rs_ema2 - rs_baseline_mean) / (rs_baseline_std + 1e-8)) * 10
-
-        # RS-Momentum: deviation of RS-Ratio from its own short EMA, scored
-        # against the std of THAT SAME DEVIATION series (also a full window).
-        rs_mom_ema = rs_ratio.ewm(span=SMOOTH_SPAN, adjust=False).mean()
-        rs_mom_deviation = rs_ratio - rs_mom_ema
-        rs_mom_baseline_std = rs_mom_deviation.rolling(window=NORM_WINDOW, min_periods=NORM_WINDOW).std()
-        rs_mom = 100 + (rs_mom_deviation / (rs_mom_baseline_std + 1e-8)) * 10
+        rs_mom_ema = rs_ratio.ewm(span=14, adjust=False).mean()
+        rs_mom = 100 + ((rs_ratio - rs_mom_ema) / (rs_ratio.rolling(window=14).std() + 1e-8)) * 10
 
         rrg_results[t] = pd.DataFrame({'RS_Ratio': rs_ratio, 'RS_Momentum': rs_mom}).dropna()
 
@@ -221,11 +190,7 @@ if st.session_state.get("rrg_rendered"):
                 tickers=tuple(parsed_tickers),
                 benchmark=bench_ticker,
                 interval_str=interval_choice,
-                # 5y of burn-in comfortably covers the worst case (a full
-                # 52- or 252-bar normalization window PLUS a 100-point tail)
-                # for both weekly and daily, so the window is always fully
-                # "warmed up" well before the period you're actually viewing.
-                history_needed="5y"
+                history_needed="2y"
             )
 
             if not raw_rrg_data:
