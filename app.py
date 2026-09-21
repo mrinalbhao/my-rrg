@@ -172,10 +172,15 @@ def calculate_rrg_metrics(tickers, benchmark, interval_str, history_needed):
         rs_ratio = 100 + ((rs_ema2 - rs_baseline_mean) / (rs_baseline_std + 1e-8)) * 10
 
         # RS-Momentum: deviation of RS-Ratio from its own short EMA, scored
-        # against RS-Ratio's longer-run std rather than a 14-bar rolling std.
+        # against the std of THAT SAME DEVIATION series - not against
+        # RS-Ratio's own std, which is a much larger-scale number now that
+        # RS-Ratio genuinely swings wide (fix #1). Dividing a small short-term
+        # wiggle by RS-Ratio's full long-run spread crushed momentum toward
+        # 100 (flat), which is what fix #1 exposed.
         rs_mom_ema = rs_ratio.ewm(span=SMOOTH_SPAN, adjust=False).mean()
-        rs_mom_baseline_std = rs_ratio.rolling(window=NORM_WINDOW, min_periods=NORM_MIN_PERIODS).std()
-        rs_mom = 100 + ((rs_ratio - rs_mom_ema) / (rs_mom_baseline_std + 1e-8)) * 10
+        rs_mom_deviation = rs_ratio - rs_mom_ema
+        rs_mom_baseline_std = rs_mom_deviation.rolling(window=NORM_WINDOW, min_periods=NORM_MIN_PERIODS).std()
+        rs_mom = 100 + (rs_mom_deviation / (rs_mom_baseline_std + 1e-8)) * 10
 
         rrg_results[t] = pd.DataFrame({'RS_Ratio': rs_ratio, 'RS_Momentum': rs_mom}).dropna()
 
