@@ -11,7 +11,26 @@ st.title("📈 Custom Relative Rotation Graph (RRG) Generator")
 st.markdown("Track momentum and relative strength trends mapped smoothly across market quadrants.")
 
 # --- SIDEBAR CONTROLS ---
-st.sidebar.header("Configuration Settings")
+# Tighten up default Streamlit spacing so the whole panel fits one screen.
+st.markdown("""
+<style>
+section[data-testid="stSidebar"] .block-container { padding-top: 1rem; }
+section[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] { gap: 0.35rem; }
+section[data-testid="stSidebar"] .stCheckbox {
+    margin-bottom: -14px;
+    margin-top: -6px;
+}
+section[data-testid="stSidebar"] .stCheckbox label p { font-size: 0.82rem; }
+section[data-testid="stSidebar"] hr { margin: 0.4rem 0; }
+section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 {
+    margin-top: 0; margin-bottom: 0.2rem; padding-top: 0;
+}
+section[data-testid="stSidebar"] .stButton button { padding: 0.25rem 0.5rem; }
+section[data-testid="stSidebar"] .stCaption { margin-top: -8px; }
+</style>
+""", unsafe_allow_html=True)
+
+st.sidebar.subheader("Configuration Settings")
 
 # Text input for Custom Tickers (still the master list)
 ticker_input = st.sidebar.text_input(
@@ -26,20 +45,13 @@ for t in ticker_input.split(","):
     if t and t not in parsed_tickers:
         parsed_tickers.append(t)
 
-# Text input for Benchmark
-benchmark_input = st.sidebar.text_input(
-    "Benchmark Ticker (e.g., SPY, QQQ)",
-    value="SPY"
+# Benchmark, interval and tail points share two rows instead of three
+bench_col, interval_col = st.sidebar.columns(2)
+benchmark_input = bench_col.text_input("Benchmark", value="SPY")
+interval_choice = interval_col.selectbox(
+    "Interval", options=["1 Day", "1 Week"], index=1  # Default to 1 Week to match your chart
 )
 
-# Combo Box for Interval
-interval_choice = st.sidebar.selectbox(
-    "Data Time Interval",
-    options=["1 Day", "1 Week"],
-    index=1  # Default to 1 Week to match your chart
-)
-
-# Tail points input
 tail_points = st.sidebar.number_input(
     "Number of Tail Points (History)",
     min_value=3,
@@ -52,13 +64,13 @@ tail_points = st.sidebar.number_input(
 # Any ticker typed in the box above gets a checkbox here. Unchecking hides its
 # trail from the chart without refetching anything.
 st.sidebar.markdown("---")
-st.sidebar.subheader("Visible Tickers")
 
 CHK_PREFIX = "chk_"
 
-col_all, col_none = st.sidebar.columns(2)
-select_all = col_all.button("Select all", use_container_width=True)
-clear_all = col_none.button("Clear all", use_container_width=True)
+header_col, all_col, none_col = st.sidebar.columns([2, 1, 1])
+header_col.markdown("**Visible Tickers**")
+select_all = all_col.button("All", use_container_width=True)
+clear_all = none_col.button("None", use_container_width=True)
 
 # Seed state for newly typed tickers (default: visible), then honour the
 # bulk buttons. Both happen before the widgets are instantiated.
@@ -72,11 +84,12 @@ for t in parsed_tickers:
         st.session_state[key] = False
 
 if parsed_tickers:
-    chk_cols = st.sidebar.columns(2)
+    # 3 columns keeps ~17 tickers to 6 short rows instead of 9.
+    chk_cols = st.sidebar.columns(3)
     for i, t in enumerate(parsed_tickers):
-        chk_cols[i % 2].checkbox(t, key=CHK_PREFIX + t)
+        chk_cols[i % 3].checkbox(t, key=CHK_PREFIX + t)
 else:
-    st.sidebar.caption("Add tickers in the box above to see them here.")
+    st.sidebar.caption("Add tickers above to see them here.")
 
 selected_tickers = [t for t in parsed_tickers if st.session_state.get(CHK_PREFIX + t, True)]
 st.sidebar.caption(f"{len(selected_tickers)} of {len(parsed_tickers)} shown")
