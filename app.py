@@ -31,18 +31,27 @@ section[data-testid="stSidebar"] .stButton button { padding: 0.35rem 0.6rem; }
 
 st.sidebar.subheader("Configuration Settings")
 
-# Text input for Custom Tickers (still the master list)
+# The permanent checklist universe — independent of the text box below.
+# These 17 always show up as checkboxes; checking/unchecking toggles them
+# on the chart. Nothing you type in the text box ever removes these.
+DEFAULT_TICKERS = [
+    "IGV", "SMH", "BOTZ", "PPA", "LIT", "BOTT", "DTCR", "QTUM", "HACK",
+    "SKYY", "NLR", "SHLD", "IBB", "DRIV", "REMX", "FINX", "HERO"
+]
+
+# Text input for ADDITIONAL tickers — these always render, no checkbox needed,
+# and are layered on top of whichever DEFAULT_TICKERS are checked.
 ticker_input = st.sidebar.text_input(
-    "Asset Tickers (Comma separated)",
-    value="IGV, SMH, BOTZ, PPA, LIT, BOTT, DTCR, QTUM, HACK, SKYY, NLR, SHLD, IBB, DRIV, REMX, FINX, HERO"
+    "Additional Tickers (Comma separated, always rendered)",
+    value=""
 )
 
-# Parse the text box into an ordered, de-duplicated universe
-parsed_tickers = []
+# Parse the text box into an ordered, de-duplicated extra list
+extra_tickers = []
 for t in ticker_input.split(","):
     t = t.strip().upper()
-    if t and t not in parsed_tickers:
-        parsed_tickers.append(t)
+    if t and t not in extra_tickers:
+        extra_tickers.append(t)
 
 # Benchmark, interval and tail points share two rows instead of three
 bench_col, interval_col = st.sidebar.columns(2)
@@ -60,8 +69,8 @@ tail_points = st.sidebar.number_input(
 )
 
 # --- VISIBILITY CHECKBOXES ---
-# Any ticker typed in the box above gets a checkbox here. Unchecking hides its
-# trail from the chart without refetching anything.
+# Fixed set of DEFAULT_TICKERS. Unchecking one hides its trail from the
+# chart without refetching anything and without ever removing it from view here.
 st.sidebar.markdown("---")
 
 CHK_PREFIX = "chk_"
@@ -71,9 +80,9 @@ header_col.markdown("**Visible Tickers**")
 select_all = all_col.button("All", use_container_width=True)
 clear_all = none_col.button("None", use_container_width=True)
 
-# Seed state for newly typed tickers (default: visible), then honour the
+# Seed state for the default tickers (default: visible), then honour the
 # bulk buttons. Both happen before the widgets are instantiated.
-for t in parsed_tickers:
+for t in DEFAULT_TICKERS:
     key = CHK_PREFIX + t
     if key not in st.session_state:
         st.session_state[key] = True
@@ -82,16 +91,19 @@ for t in parsed_tickers:
     if clear_all:
         st.session_state[key] = False
 
-if parsed_tickers:
-    # 3 columns keeps ~17 tickers to 6 short rows instead of 9.
-    chk_cols = st.sidebar.columns(3)
-    for i, t in enumerate(parsed_tickers):
-        chk_cols[i % 3].checkbox(t, key=CHK_PREFIX + t)
-else:
-    st.sidebar.caption("Add tickers above to see them here.")
+# 3 columns keeps 17 tickers to 6 short rows instead of 17.
+chk_cols = st.sidebar.columns(3)
+for i, t in enumerate(DEFAULT_TICKERS):
+    chk_cols[i % 3].checkbox(t, key=CHK_PREFIX + t)
 
-selected_tickers = [t for t in parsed_tickers if st.session_state.get(CHK_PREFIX + t, True)]
-st.sidebar.caption(f"{len(selected_tickers)} of {len(parsed_tickers)} shown")
+checked_defaults = [t for t in DEFAULT_TICKERS if st.session_state.get(CHK_PREFIX + t, True)]
+
+# Final render list: checked defaults + always-on extras, de-duplicated,
+# preserving default order first then any new extras.
+parsed_tickers = list(dict.fromkeys(DEFAULT_TICKERS + extra_tickers))  # full universe, for colour stability
+selected_tickers = list(dict.fromkeys(checked_defaults + extra_tickers))
+
+st.sidebar.caption(f"{len(selected_tickers)} shown ({len(checked_defaults)} checked + {len(extra_tickers)} extra)")
 
 st.sidebar.markdown("---")
 
