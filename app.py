@@ -141,19 +141,41 @@ def calculate_rrg_metrics(tickers, benchmark, interval_str, history_needed):
         df_close.index = df_close.index - pd.to_timedelta(df_close.index.dayofweek - 4, unit='D')
         df_close = df_close.dropna()
 
+    # Two separate timescales, deliberately decoupled:
+    #   SMOOTH_SPAN  - short EMA span used to de-noise the raw ratio/RS-Ratio line
+    #   NORM_WINDOW  - much longer lookback used only as the statistical baseline
+    #                  (rolling mean/std) that RS-Ratio/RS-Momentum are scored against.
+    # Using the same short window for both smoothing AND the baseline (the original
+    # bug) makes the baseline chase the current value almost as fast as the value
+    # itself moves, which mechanically pulls every reading back toward 100 - a
+    # mean-reversion bias that isn't part of the real indicator. Decoupling them
+    # lets a sector actually sit "extended" above/below 100 for many bars, matching
+    # how professional RRG charts (e.g. Optuma) behave.
+    SMOOTH_SPAN = 14
+    NORM_WINDOW = 100   # ~2 years of weekly bars, ~5 months of daily bars
+    NORM_MIN_PERIODS = 20  # allow the baseline to start before a full window exists
+
     rrg_results = {}
     for t in tickers:
         if t not in df_close.columns or t == benchmark:
             continue
 
         rs_raw = (df_close[t] / df_close[benchmark]) * 100
-        rs_ema1 = rs_raw.ewm(span=14, adjust=False).mean()
-        rs_ema2 = rs_ema1.ewm(span=14, adjust=False).mean()
-        rs_std = rs_raw.rolling(window=14).std()
-        rs_ratio = 100 + ((rs_ema2 - rs_ema2.rolling(window=14).mean()) / (rs_std + 1e-8)) * 10
+        rs_ema1 = rs_raw.ewm(span=SMOOTH_SPAN, adjust=False).mean()
+        rs_ema2 = rs_ema1.ewm(span=SMOOTH_SPAN, adjust=False).mean()
 
-        rs_mom_ema = rs_ratio.ewm(span=14, adjust=False).mean()
-        rs_mom = 100 + ((rs_ratio - rs_mom_ema) / (rs_ratio.rolling(window=14).std() + 1e-8)) * 10
+        # RS-Ratio: z-score of the smoothed ratio against ITS OWN longer-run
+        # mean/std (previously this divided by the std of the raw, unsmoothed
+        # ratio, which artificially compressed the spread).
+        rs_baseline_mean = rs_ema2.rolling(window=NORM_WINDOW, min_periods=NORM_MIN_PERIODS).mean()
+        rs_baseline_std = rs_ema2.rolling(window=NORM_WINDOW, min_periods=NORM_MIN_PERIODS).std()
+        rs_ratio = 100 + ((rs_ema2 - rs_baseline_mean) / (rs_baseline_std + 1e-8)) * 10
+
+        # RS-Momentum: deviation of RS-Ratio from its own short EMA, scored
+        # against RS-Ratio's longer-run std rather than a 14-bar rolling std.
+        rs_mom_ema = rs_ratio.ewm(span=SMOOTH_SPAN, adjust=False).mean()
+        rs_mom_baseline_std = rs_ratio.rolling(window=NORM_WINDOW, min_periods=NORM_MIN_PERIODS).std()
+        rs_mom = 100 + ((rs_ratio - rs_mom_ema) / (rs_mom_baseline_std + 1e-8)) * 10
 
         rrg_results[t] = pd.DataFrame({'RS_Ratio': rs_ratio, 'RS_Momentum': rs_mom}).dropna()
 
