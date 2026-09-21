@@ -14,14 +14,14 @@ st.markdown("Track momentum and relative strength trends mapped smoothly across 
 # Tighten up default Streamlit spacing so the whole panel fits one screen.
 st.markdown("""
 <style>
-section[data-testid="stSidebar"] .block-container { padding-top: 1.2rem; }
-section[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] { gap: 0.5rem; }
+section[data-testid="stSidebar"] .block-container { padding-top: 0.9rem; }
+section[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] { gap: 0.42rem; }
 section[data-testid="stSidebar"] .stCheckbox {
     margin-bottom: 2px;
     padding: 1px 0;
 }
-section[data-testid="stSidebar"] .stCheckbox label p { font-size: 0.9rem; }
-section[data-testid="stSidebar"] hr { margin: 0.45rem 0; }
+section[data-testid="stSidebar"] .stCheckbox label p { font-size: 0.82rem; }
+section[data-testid="stSidebar"] hr { margin: 0.35rem 0; }
 section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 {
     margin-top: 0; margin-bottom: 0.4rem; padding-top: 0;
 }
@@ -97,7 +97,7 @@ for t in DEFAULT_TICKERS:
         st.session_state[key] = False
 
 # 3 columns keeps 17 tickers to 6 short rows instead of 17.
-chk_cols = st.sidebar.columns(3)
+chk_cols = st.sidebar.columns(3, gap="small")
 for i, t in enumerate(DEFAULT_TICKERS):
     chk_cols[i % 3].checkbox(f":red[{t}]", key=CHK_PREFIX + t)
 
@@ -123,10 +123,11 @@ for t in SECTOR_TICKERS:
     if clear_all2:
         st.session_state[key] = False
 
-# 5 columns keeps all 10 sector ETFs to just 2 short rows.
-chk_cols2 = st.sidebar.columns(5)
+# 4 columns spreads 10 sector ETFs across 3 rows (4+4+2), with a tight
+# column gap so the 3-4 letter tickers don't get clipped.
+chk_cols2 = st.sidebar.columns(4, gap="small")
 for i, t in enumerate(SECTOR_TICKERS):
-    chk_cols2[i % 5].checkbox(f":blue[{t}]", key=CHK2_PREFIX + t)
+    chk_cols2[i % 4].checkbox(f":blue[{t}]", key=CHK2_PREFIX + t)
 
 checked_sectors = [t for t in SECTOR_TICKERS if st.session_state.get(CHK2_PREFIX + t, True)]
 
