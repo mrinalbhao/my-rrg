@@ -14,19 +14,18 @@ st.markdown("Track momentum and relative strength trends mapped smoothly across 
 # Tighten up default Streamlit spacing so the whole panel fits one screen.
 st.markdown("""
 <style>
-section[data-testid="stSidebar"] .block-container { padding-top: 1rem; }
-section[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] { gap: 0.35rem; }
+section[data-testid="stSidebar"] .block-container { padding-top: 1.2rem; }
+section[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] { gap: 0.6rem; }
 section[data-testid="stSidebar"] .stCheckbox {
-    margin-bottom: -14px;
-    margin-top: -6px;
+    margin-bottom: 2px;
+    padding: 1px 0;
 }
-section[data-testid="stSidebar"] .stCheckbox label p { font-size: 0.82rem; }
-section[data-testid="stSidebar"] hr { margin: 0.4rem 0; }
+section[data-testid="stSidebar"] .stCheckbox label p { font-size: 0.9rem; }
+section[data-testid="stSidebar"] hr { margin: 0.6rem 0; }
 section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 {
-    margin-top: 0; margin-bottom: 0.2rem; padding-top: 0;
+    margin-top: 0; margin-bottom: 0.4rem; padding-top: 0;
 }
-section[data-testid="stSidebar"] .stButton button { padding: 0.25rem 0.5rem; }
-section[data-testid="stSidebar"] .stCaption { margin-top: -8px; }
+section[data-testid="stSidebar"] .stButton button { padding: 0.35rem 0.6rem; }
 </style>
 """, unsafe_allow_html=True)
 
